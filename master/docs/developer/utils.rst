@@ -145,7 +145,8 @@ Several small utilities are available at the top-level :mod:`buildbot.util` pack
         3
         4
 
-     Use this for extremely large lists to keep memory-usage down and improve performance when you only need to iterate once.
+     Use this for extremely large lists to keep memory-usage down and improve performance when
+     you only need to iterate once.
 
 .. py:function:: none_or_str(obj)
 
@@ -200,10 +201,12 @@ Several small utilities are available at the top-level :mod:`buildbot.util` pack
     It returns the result of the wrapped function.
     If the wrapped function fails, its traceback will be printed, the reactor halted, and ``None`` returned.
 
-.. py:function:: asyncSleep(secs)
+.. py:function:: asyncSleep(secs, reactor=None)
 
     Yield a deferred that will fire with no result after ``secs`` seconds.
     This is the asynchronous equivalent to ``time.sleep``, and can be useful in tests.
+    In case a custom reactor is used, the ``reactor`` parameter may be set.
+    By default, ``twisted.internet.reactor`` is used.
 
 .. py:function:: stripUrlPassword(url)
 
@@ -514,6 +517,8 @@ The ``@poll.method`` decorator makes this behavior easy and reliable.
     This decorator replaces the decorated method with a :py:class:`Poller` instance configured to call the decorated method periodically.
     The poller is initially stopped, so periodic calls will not begin until its ``start`` method is called.
     The start polling interval is specified when the poller is started.
+    A random delay may optionally be supplied.
+    This allows to avoid the situation of multiple services with the same interval are executing at exactly the same time.
 
     If the decorated method fails or raises an exception, the Poller logs the error and re-schedules the call for the next interval.
 
@@ -539,10 +544,12 @@ The ``@poll.method`` decorator makes this behavior easy and reliable.
 
 .. py:class:: Poller
 
-    .. py:method:: start(interval=N, now=False)
+    .. py:method:: start(interval=N, now=False, random_delay_min=0, random_delay_max=0)
 
         :param interval: time, in seconds, between invocations
         :param now: if true, call the decorated method immediately on startup.
+        :param random_delay_min: Minimum random delay to apply to the start time of the decorated method.
+        :param random_delay_min: Maximum random delay to apply to the start time of the decorated method.
 
         Start the poller.
 
@@ -556,7 +563,7 @@ The ``@poll.method`` decorator makes this behavior easy and reliable.
     .. py:method:: __call__()
 
         Force a call to the decorated method now.
-        If the decorated method is currently running, another call will begin as soon as it completes.
+        If the decorated method is currently running, another call will begin as soon as it completes unless the poller is currently stopping.
 
 :py:mod:`buildbot.util.maildir`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -786,7 +793,7 @@ The classes in the :py:mod:`buildbot.util.subscription` module are used for deal
 
         Get a named state value from the object's state.
 
-    .. py:method:: getState(name, value)
+    .. py:method:: setState(name, value)
 
         :param name: the name of the value to change
         :param value: the value to set - must be a JSONable object
@@ -1140,6 +1147,8 @@ For example, a particular daily scheduler could be configured on multiple master
 :py:mod:`buildbot.util.httpclientservice`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+.. py:module:: buildbot.util.httpclientservice
+
 .. py:class:: HTTPClientService
 
     This class implements a SharedService for doing http client access.
@@ -1247,12 +1256,18 @@ For example, a particular daily scheduler could be configured on multiple master
 
         :returns: http status code of the request's response (e.g 200)
 
+    .. py:attribute:: url
+
+        :returns: request's url (e.g https://api.github.com/endpoint')
+
 .. _txrequests: https://pypi.python.org/pypi/txrequests
 .. _treq: https://pypi.python.org/pypi/treq
 .. _twisted IResponse API: https://twistedmatrix.com/documents/current/api/twisted.web.iweb.IResponse.html
 
 :py:mod:`buildbot.test.fake.httpclientservice`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. py:module:: buildbot.test.fake.httpclientservice
 
 .. py:class:: HTTPClientService
 
@@ -1262,14 +1277,14 @@ For example, a particular daily scheduler could be configured on multiple master
     It will then replace the original implementation automatically (no need to patch anything).
     The testing methodology is based on `AngularJS ngMock`_.
 
-    .. py:method:: getFakeService(cls, master, case, *args, **kwargs):
+    .. py:method:: getService(cls, master, case, *args, **kwargs):
 
         :param master: the instance of a fake master service
         :param case: a :py:class:`twisted.python.unittest.TestCase` instance
 
-        :py:meth:`getFakeService` returns a fake :py:class:`HTTPClientService`, and should be used in place of :py:meth:`getService`.
+        :py:meth:`getService` returns a fake :py:class:`HTTPClientService`, and should be used just like the regular :py:meth:`getService`.
 
-        on top of :py:meth:`getService` it will make sure the original :py:class:`HTTPClientService` is not called, and assert that all expected http requests have been described in the test case.
+        It will make sure the original :py:class:`HTTPClientService` is not called, and assert that all expected http requests have been described in the test case.
 
 
     .. py:method:: expect(self, method, ep, params=None, data=None, json=None, code=200,
@@ -1305,7 +1320,8 @@ For example, a particular daily scheduler could be configured on multiple master
 
                 @defer.inlineCallbacks
                 def reconfigService(self, baseurl):
-                    self._http = yield httpclientservice.HTTPClientService.getService(self.master, baseurl)
+                    self._http = yield httpclientservice.HTTPClientService.getService(
+                        self.master, baseurl)
 
                 @defer.inlineCallbacks
                 def doGetRoot(self):
@@ -1314,7 +1330,8 @@ For example, a particular daily scheduler could be configured on multiple master
                     if res.code != 200:
                         raise Exception("%d: server did not succeed" % (res.code))
                     res_json = yield res.json()
-                    # res.json() returns a deferred to account for the time needed to fetch the entire body
+                    # res.json() returns a deferred to account for the time needed to fetch the
+                    # entire body
                     return res_json
 
 
@@ -1323,8 +1340,9 @@ For example, a particular daily scheduler could be configured on multiple master
                 def setUp(self):
                     baseurl = 'http://127.0.0.1:8080'
                     self.parent = service.MasterService()
-                    self._http = self.successResultOf(fakehttpclientservice.HTTPClientService.getFakeService(
-                        self.parent, self, baseurl))
+                    self._http = self.successResultOf(
+                        fakehttpclientservice.HTTPClientService.getService(self.parent, self,
+                                                                           baseurl))
                     self.tested = myTestedService(baseurl)
 
                     self.successResultOf(self.tested.setServiceParent(self.parent))
@@ -1346,6 +1364,8 @@ For example, a particular daily scheduler could be configured on multiple master
 
 :py:mod:`buildbot.util.ssl`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. py:module:: buildbot.util.ssl
 
 This module is a copy of :py:mod:`twisted.internet.ssl` except it won't crash with :py:class:`ImportError` if :py:mod:`pyopenssl` is not installed.
 If you need to use :py:mod:`twisted.internet.ssl`, please instead use :py:mod:`buildbot.util.ssl`, and call :py:func:`ssl.ensureHasSSL` in :py:meth:`checkConfig` to provide helpful message to the user, only if he enabled SSL for your plugin.

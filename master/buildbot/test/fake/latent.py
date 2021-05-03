@@ -137,7 +137,7 @@ class LatentController(SeverWorkerConnectionMixin):
     def disconnect_worker(self):
         super().disconnect_worker()
         if self.remote_worker is None:
-            return
+            return None
         self.worker.conn, conn = None, self.worker.conn
         self.remote_worker, worker = None, self.remote_worker
 
@@ -173,6 +173,7 @@ class ControllableLatentWorker(AbstractLatentWorker):
 
     def __init__(self, name, controller, **kwargs):
         self._controller = controller
+        self._random_password_id = 0
         AbstractLatentWorker.__init__(self, name, None, **kwargs)
 
     def checkConfig(self, name, _, **kwargs):
@@ -182,10 +183,13 @@ class ControllableLatentWorker(AbstractLatentWorker):
             **kwargs)
 
     def reconfigService(self, name, _, **kwargs):
-        AbstractLatentWorker.reconfigService(
-            self, name, None,
-            build_wait_timeout=self._controller.build_wait_timeout,
-            **kwargs)
+        return super().reconfigService(name, self.getRandomPass(),
+                                       build_wait_timeout=self._controller.build_wait_timeout,
+                                       **kwargs)
+
+    def _generate_random_password(self):
+        self._random_password_id += 1
+        return 'password_{}'.format(self._random_password_id)
 
     @defer.inlineCallbacks
     def isCompatibleWithBuild(self, build_props):
