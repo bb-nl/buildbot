@@ -86,7 +86,7 @@ class RestRootResource(resource.Resource):
     def render(self, request):
         request.setHeader(b"content-type", JSON_ENCODED)
         min_vers = self.master.config.www.get('rest_minimum_version', 0)
-        api_versions = dict(('v%d' % v, '%sapi/v%d' % (self.base_url, v))
+        api_versions = dict(('v{}'.format(v), '{}api/v{}'.format(self.base_url, v))
                             for v in self.version_classes
                             if v > min_vers)
         data = json.dumps(dict(api_versions=api_versions))
@@ -179,8 +179,8 @@ class V2RootResource(resource.Resource):
         try:
             data = json.loads(bytes2unicode(request.content.read()))
         except Exception as e:
-            raise BadJsonRpc2("JSON parse error: %s" % (str(e),),
-                              JSONRPC_CODES["parse_error"])
+            raise BadJsonRpc2("JSON parse error: {}".format(
+                str(e)), JSONRPC_CODES["parse_error"]) from e
 
         if isinstance(data, list):
             raise BadJsonRpc2("JSONRPC batch requests are not supported",
@@ -191,10 +191,9 @@ class V2RootResource(resource.Resource):
 
         def check(name, types, typename):
             if name not in data:
-                raise BadJsonRpc2("missing key '%s'" % (name,),
-                                  JSONRPC_CODES["invalid_request"])
+                raise BadJsonRpc2("missing key '{}'".format(name), JSONRPC_CODES["invalid_request"])
             if not isinstance(data[name], types):
-                raise BadJsonRpc2("'%s' must be %s" % (name, typename),
+                raise BadJsonRpc2("'{}' must be {}".format(name, typename),
                                   JSONRPC_CODES["invalid_request"])
         check("jsonrpc", (str,), "a string")
         check("method", (str,), "a string")
@@ -215,7 +214,7 @@ class V2RootResource(resource.Resource):
             if isinstance(msg, bytes):
                 msg = bytes2unicode(msg)
             if self.debug:
-                log.msg("JSONRPC error: %s" % (msg,))
+                log.msg("JSONRPC error: {}".format(msg))
             request.setResponseCode(errcode)
             request.setHeader(b'content-type', JSON_ENCODED)
             if "error" not in jsonRpcReply:  # already filled in by caller
@@ -232,7 +231,10 @@ class V2RootResource(resource.Resource):
             if 'anonymous' in userinfos and userinfos['anonymous']:
                 owner = "anonymous"
             else:
-                owner = userinfos['email']
+                for field in ('email', 'username', 'full_name'):
+                    owner = userinfos.get(field, None)
+                    if owner:
+                        break
             params['owner'] = owner
 
             result = yield ep.control(method, params, kwargs)
@@ -275,13 +277,13 @@ class V2RootResource(resource.Resource):
             elif arg == b'limit':
                 try:
                     limit = int(reqArgs[arg][0])
-                except Exception:
-                    raise BadRequest('invalid limit')
+                except Exception as e:
+                    raise BadRequest('invalid limit') from e
             elif arg == b'offset':
                 try:
                     offset = int(reqArgs[arg][0])
-                except Exception:
-                    raise BadRequest('invalid offset')
+                except Exception as e:
+                    raise BadRequest('invalid offset') from e
             elif arg == b'property':
                 try:
                     props = []
@@ -290,17 +292,17 @@ class V2RootResource(resource.Resource):
                             raise TypeError(
                                 "Invalid type {} for {}".format(type(v), v))
                         props.append(bytes2unicode(v))
-                except Exception:
+                except Exception as e:
                     raise BadRequest(
-                        'invalid property value for {}'.format(arg))
+                        'invalid property value for {}'.format(arg)) from e
                 properties.append(resultspec.Property(arg, 'eq', props))
             elif argStr in entityType.fieldNames:
                 field = entityType.fields[argStr]
                 try:
                     values = [field.valueFromString(v) for v in reqArgs[arg]]
-                except Exception:
+                except Exception as e:
                     raise BadRequest(
-                        'invalid filter value for {}'.format(argStr))
+                        'invalid filter value for {}'.format(argStr)) from e
 
                 filters.append(resultspec.Filter(argStr, 'eq', values))
             elif '__' in argStr:
@@ -314,9 +316,9 @@ class V2RootResource(resource.Resource):
                     try:
                         values = [fieldType.valueFromString(v)
                                   for v in reqArgs[arg]]
-                    except Exception:
+                    except Exception as e:
                         raise BadRequest(
-                            'invalid filter value for {}'.format(argStr))
+                            'invalid filter value for {}'.format(argStr)) from e
                     filters.append(resultspec.Filter(field, op, values))
             else:
                 raise BadRequest(
@@ -355,7 +357,7 @@ class V2RootResource(resource.Resource):
     def renderRest(self, request):
         def writeError(msg, errcode=404, jsonrpccode=None):
             if self.debug:
-                log.msg("REST error: %s" % (msg,))
+                log.msg("REST error: {}".format(msg))
             request.setResponseCode(errcode)
             request.setHeader(b'content-type', b'text/plain; charset=utf-8')
             msg = bytes2unicode(msg)
@@ -460,7 +462,7 @@ class V2RootResource(resource.Resource):
         def writeError(msg, errcode=400):
             msg = bytes2unicode(msg)
             if self.debug:
-                log.msg("HTTP error: %s" % (msg,))
+                log.msg("HTTP error: {}".format(msg))
             request.setResponseCode(errcode)
             request.setHeader(b'content-type', b'text/plain; charset=utf-8')
             if request.method == b'POST':

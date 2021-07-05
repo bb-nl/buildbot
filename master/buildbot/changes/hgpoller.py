@@ -32,26 +32,21 @@ class HgPoller(base.PollingChangeSource, StateMixin):
     """This source will poll a remote hg repo for changes and submit
     them to the change master."""
 
-    compare_attrs = ("repourl", "branch", "branches", "bookmarks", "workdir",
-                     "pollInterval", "hgpoller", "usetimestamps",
-                     "category", "project", "pollAtLaunch")
+    compare_attrs = ("repourl", "branch", "branches", "bookmarks", "workdir", "pollInterval",
+                     "hgpoller", "usetimestamps", "category", "project", "pollAtLaunch",
+                     "pollRandomDelayMin", "pollRandomDelayMax")
 
     db_class_name = 'HgPoller'
 
-    def __init__(self, repourl, branch=None, branches=None, bookmarks=None,
-                 workdir=None, pollInterval=10 * 60,
-                 hgbin='hg', usetimestamps=True,
-                 category=None, project='', pollinterval=-2,
-                 encoding='utf-8', name=None, pollAtLaunch=False,
-                 revlink=lambda branch, revision: ('')
-                 ):
+    def __init__(self, repourl, branch=None, branches=None, bookmarks=None, workdir=None,
+                 pollInterval=10 * 60, hgbin="hg", usetimestamps=True, category=None,
+                 project="", pollinterval=-2, encoding="utf-8", name=None, pollAtLaunch=False,
+                 revlink=lambda branch, revision: (""), pollRandomDelayMin=0,
+                 pollRandomDelayMax=0):
 
         # for backward compatibility; the parameter used to be spelled with 'i'
         if pollinterval != -2:
             pollInterval = pollinterval
-
-        if name is None:
-            name = repourl
 
         self.repourl = repourl
 
@@ -64,6 +59,13 @@ class HgPoller(base.PollingChangeSource, StateMixin):
 
         self.bookmarks = bookmarks or []
 
+        if name is None:
+            name = repourl
+            if self.bookmarks:
+                name += "_" + "_".join(self.bookmarks)
+            if self.branches:
+                name += "_" + "_".join(self.branches)
+
         if not self.branches and not self.bookmarks:
             self.branches = ['default']
 
@@ -71,7 +73,9 @@ class HgPoller(base.PollingChangeSource, StateMixin):
             config.error(
                 "You need to provide a valid callable for revlink")
 
-        super().__init__(name=name, pollInterval=pollInterval, pollAtLaunch=pollAtLaunch)
+        super().__init__(name=name, pollInterval=pollInterval, pollAtLaunch=pollAtLaunch,
+                         pollRandomDelayMin=pollRandomDelayMin,
+                         pollRandomDelayMax=pollRandomDelayMax)
         self.encoding = encoding
         self.lastChange = time.time()
         self.lastPoll = time.time()
@@ -97,10 +101,9 @@ class HgPoller(base.PollingChangeSource, StateMixin):
         status = ""
         if not self.master:
             status = "[STOPPED - check log]"
-        return ("HgPoller watching the remote Mercurial repository %r, "
-                "branches: %r, in workdir %r %s") % (self.repourl,
-                                                     ', '.join(self.branches),
-                                                     self.workdir, status)
+        return (("HgPoller watching the remote Mercurial repository '{}', "
+                 "branches: {}, in workdir '{}' {}").format(self.repourl, ', '.join(self.branches),
+                                                            self.workdir, status))
 
     @deferredLocked('initLock')
     def poll(self):
@@ -159,7 +162,7 @@ class HgPoller(base.PollingChangeSource, StateMixin):
         """
         if self._isRepositoryReady():
             return defer.succeed(None)
-        log.msg('hgpoller: initializing working dir from %s' % self.repourl)
+        log.msg('hgpoller: initializing working dir from {}'.format(self.repourl))
         d = utils.getProcessOutputAndValue(self.hgbin,
                                            ['init', self._absWorkdir()],
                                            env=os.environ)
@@ -173,8 +176,7 @@ class HgPoller(base.PollingChangeSource, StateMixin):
         self.lastPoll = time.time()
 
         d = self._initRepository()
-        d.addCallback(lambda _: log.msg(
-            "hgpoller: polling hg repo at %s" % self.repourl))
+        d.addCallback(lambda _: log.msg("hgpoller: polling hg repo at {}".format(self.repourl)))
 
         # get a deferred object that performs the fetch
         args = ['pull']
@@ -216,7 +218,7 @@ class HgPoller(base.PollingChangeSource, StateMixin):
         yet, one shouldn't be surprised to get errors)
         """
         d = utils.getProcessOutput(self.hgbin,
-                                   ['heads', '-r', branch,
+                                   ['heads', branch,
                                        '--template={rev}' + os.linesep],
                                    path=self._absWorkdir(), env=os.environ, errortoo=False)
 
@@ -228,7 +230,7 @@ class HgPoller(base.PollingChangeSource, StateMixin):
         @d.addCallback
         def results(heads):
             if not heads:
-                return
+                return None
 
             if len(heads.split()) > 1:
                 log.err(("hgpoller: caught several heads in branch %r "
@@ -236,7 +238,7 @@ class HgPoller(base.PollingChangeSource, StateMixin):
                          "You should wait until the situation is normal again "
                          "due to a merge or directly strip if remote repo "
                          "gets stripped later.") % (branch, self.repourl))
-                return
+                return None
 
             # in case of whole reconstruction, are we sure that we'll get the
             # same node -> rev assignations ?
@@ -261,6 +263,17 @@ class HgPoller(base.PollingChangeSource, StateMixin):
             yield self._processBranchChanges(rev, branch)
 
     @defer.inlineCallbacks
+    def _getRevNodeList(self, revset):
+        revListArgs = ['log', '-r', revset, r'--template={rev}:{node}\n']
+        results = yield utils.getProcessOutput(self.hgbin, revListArgs,
+                                               path=self._absWorkdir(), env=os.environ,
+                                               errortoo=False)
+        results = results.decode(self.encoding)
+
+        revNodeList = [rn.split(':', 1) for rn in results.strip().split()]
+        defer.returnValue(revNodeList)
+
+    @defer.inlineCallbacks
     def _processBranchChanges(self, new_rev, branch):
         prev_rev = yield self._getCurrentRev(branch)
         if new_rev == prev_rev:
@@ -272,15 +285,16 @@ class HgPoller(base.PollingChangeSource, StateMixin):
             return
 
         # two passes for hg log makes parsing simpler (comments is multi-lines)
-        revset = '{}::{}'.format(prev_rev, new_rev)
-        revListArgs = ['log', '-r', revset, r'--template={rev}:{node}\n']
-        results = yield utils.getProcessOutput(self.hgbin, revListArgs,
-                                               path=self._absWorkdir(), env=os.environ, errortoo=False)
-        results = results.decode(self.encoding)
+        revNodeList = yield self._getRevNodeList('{}::{}'.format(prev_rev, new_rev))
 
-        revNodeList = [rn.split(':', 1) for rn in results.strip().split()]
         # revsets are inclusive. Strip the already-known "current" changeset.
-        del revNodeList[0]
+        if not revNodeList:
+            # empty revNodeList probably means the branch has changed head (strip of force push?)
+            # in that case, we should still produce a change for that new rev (but we can't know
+            # how many parents were pushed)
+            revNodeList = yield self._getRevNodeList(new_rev)
+        else:
+            del revNodeList[0]
 
         log.msg('hgpoller: processing %d changes in branch %r: %r in %r'
                 % (len(revNodeList), branch, revNodeList, self._absWorkdir()))
@@ -315,8 +329,7 @@ class HgPoller(base.PollingChangeSource, StateMixin):
         "utility method to handle the result of getProcessOutputAndValue"
         (stdout, stderr, code) = res
         if code != 0:
-            raise EnvironmentError(
-                'command failed with exit code %d: %s' % (code, stderr))
+            raise EnvironmentError('command failed with exit code {}: {}'.format(code, stderr))
         return (stdout, stderr, code)
 
     def _stopOnFailure(self, f):

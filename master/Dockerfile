@@ -12,12 +12,12 @@
 # which get installed in the final image.
 # This allows us to avoid installing build tools like gcc in the final image.
 
-FROM        alpine:3.7 AS buildbot-build
+FROM        alpine:3.11 AS buildbot-build
 MAINTAINER  Buildbot maintainers
 
 # Last build date - this can be updated whenever there are security updates so
 # that everything is rebuilt
-ENV         security_updates_as_of 2018-04-10
+ENV         security_updates_as_of 2021-03-01
 
 
 COPY . /usr/src/buildbot
@@ -37,7 +37,7 @@ RUN \
         curl && \
 # install pip dependencies
     pip3 install --upgrade pip setuptools wheel && \
-    pip3 install "buildbot[bundle,tls]" && \
+    env CRYPTOGRAPHY_DONT_BUILD_RUST=1 pip3 install "buildbot[bundle,tls]" && \
     pip3 install -r /usr/src/buildbot/requirements-docker-extras.txt && \
     pip3 install "/usr/src/buildbot" && \
     mkdir -p wheels && \
@@ -54,12 +54,12 @@ RUN \
 # Note that the UI and worker packages are the latest version published on pypi
 # This is to avoid pulling node inside this container
 
-FROM        alpine:3.7
+FROM        alpine:3.11
 MAINTAINER  Buildbot maintainers
 
 # Last build date - this can be updated whenever there are security updates so
 # that everything is rebuilt
-ENV         security_updates_as_of 2018-04-11
+ENV         security_updates_as_of 2021-03-01
 
 
 COPY . /usr/src/buildbot
@@ -85,7 +85,7 @@ RUN \
 # install pip dependencies
     pip3 install --upgrade pip setuptools && \
     pip3 install /wheels/*.whl && \
-    pip3 install "buildbot[bundle,tls]" && \
+    env CRYPTOGRAPHY_DONT_BUILD_RUST=1 pip3 install "buildbot[bundle,tls]" && \
     pip3 install "/usr/src/buildbot" && \
     rm -r /root/.cache /wheels
 
