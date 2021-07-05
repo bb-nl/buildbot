@@ -17,7 +17,6 @@
 import json
 import sys
 
-from twisted.python.compat import unicode
 from twisted.trial import unittest
 
 from buildbot.clients import tryclient
@@ -26,7 +25,7 @@ from buildbot.clients import tryclient
 class createJobfile(unittest.TestCase):
 
     def makeNetstring(self, *strings):
-        return ''.join(['%d:%s,' % (len(s), s) for s in strings])
+        return ''.join(['{}:{},'.format(len(s), s) for s in strings])
 
     # version 1 is deprecated and not produced by the try client
 
@@ -172,12 +171,12 @@ class createJobfile(unittest.TestCase):
 
     def test_RemoteTryPP_encoding(self):
         rmt = tryclient.RemoteTryPP("job")
-        self.assertTrue(isinstance(rmt.job, unicode))
+        self.assertTrue(isinstance(rmt.job, str))
         rmt.transport = self.RemoteTryPP_TestStream()
         rmt.connectionMade()
         self.assertFalse(rmt.transport.is_open)
         self.assertEqual(len(rmt.transport.writes), 1)
-        self.assertFalse(isinstance(rmt.transport.writes[0], unicode))
+        self.assertFalse(isinstance(rmt.transport.writes[0], str))
         for streamname in "out", "err":
             sys_streamattr = "std" + streamname
             rmt_methodattr = streamname + "Received"
@@ -189,4 +188,4 @@ class createJobfile(unittest.TestCase):
             finally:
                 setattr(sys, sys_streamattr, saved_stream)
             self.assertEqual(len(teststream.writes), 1)
-            self.assertTrue(isinstance(teststream.writes[0], unicode))
+            self.assertTrue(isinstance(teststream.writes[0], str))

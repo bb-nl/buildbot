@@ -76,37 +76,44 @@ class BaseLock:
         if count > old_max_count:
             self._tryWakeUp()
 
-    def isAvailable(self, requester, access):
-        """ Return a boolean whether the lock is available for claiming """
-        debuglog("%s isAvailable(%s, %s): self.owners=%r"
-                 % (self, requester, access, self.owners))
-        num_excl, num_counting = self._claimed_excl, self._claimed_counting
-
-        # Find all waiters ahead of the requester in the wait queue
+    def _find_waiting(self, requester):
         for idx, waiter in enumerate(self.waiting):
             if waiter[0] is requester:
-                w_index = idx
-                break
-        else:
+                return idx
+        return None
+
+    def isAvailable(self, requester, access):
+        """ Return a boolean whether the lock is available for claiming """
+        debuglog("{} isAvailable({}, {}): self.owners={}".format(self, requester, access,
+                                                                 repr(self.owners)))
+        num_excl, num_counting = self._claimed_excl, self._claimed_counting
+
+        if not access.count:
+            return True
+
+        w_index = self._find_waiting(requester)
+        if w_index is None:
             w_index = len(self.waiting)
+
         ahead = self.waiting[:w_index]
 
         if access.mode == 'counting':
             # Wants counting access
-            return num_excl == 0 and num_counting + len(ahead) < self.maxCount \
+            return not num_excl \
+                and num_counting + len(ahead) + access.count <= self.maxCount \
                 and all([w[1].mode == 'counting' for w in ahead])
         # else Wants exclusive access
-        return num_excl == 0 and num_counting == 0 and not ahead
+        return not num_excl and not num_counting and not ahead
 
     def _addOwner(self, owner, access):
         self.owners.append((owner, access))
         if access.mode == 'counting':
-            self._claimed_counting += 1
+            self._claimed_counting += access.count
         else:
             self._claimed_excl += 1
 
-        assert (self._claimed_excl == 1 and self._claimed_counting == 0) \
-            or (self._claimed_excl == 0 and self._claimed_excl <= self.maxCount)
+        assert (self._claimed_excl and not self._claimed_counting) \
+            or (not self._claimed_excl and self._claimed_excl <= self.maxCount)
 
     def _removeOwner(self, owner, access):
         # returns True if owner removed, False if the lock has been already
@@ -117,23 +124,32 @@ class BaseLock:
 
         self.owners.remove(entry)
         if access.mode == 'counting':
-            self._claimed_counting -= 1
+            self._claimed_counting -= access.count
         else:
             self._claimed_excl -= 1
         return True
 
     def claim(self, owner, access):
         """ Claim the lock (lock must be available) """
-        debuglog("%s claim(%s, %s)" % (self, owner, access.mode))
+        debuglog("{} claim({}, {})".format(self, owner, access.mode))
         assert owner is not None
         assert self.isAvailable(owner, access), "ask for isAvailable() first"
 
         assert isinstance(access, LockAccess)
         assert access.mode in ['counting', 'exclusive']
+        assert isinstance(access.count, int)
+        if access.mode == 'exclusive':
+            assert access.count == 1
+        else:
+            assert access.count >= 0
+        if not access.count:
+            return
+
         self.waiting = [w for w in self.waiting if w[0] is not owner]
         self._addOwner(owner, access)
 
-        debuglog(" %s is claimed '%s'" % (self, access.mode))
+        debuglog(" {} is claimed '{}', {} units".format(self, access.mode,
+                  access.count))
 
     def subscribeToReleases(self, callback):
         """Schedule C{callback} to be invoked every time this lock is
@@ -144,9 +160,13 @@ class BaseLock:
         """ Release the lock """
         assert isinstance(access, LockAccess)
 
-        debuglog("%s release(%s, %s)" % (self, owner, access.mode))
+        if not access.count:
+            return
+
+        debuglog("{} release({}, {}, {})".format(self, owner, access.mode,
+                  access.count))
         if not self._removeOwner(owner, access):
-            debuglog("%s already released" % self)
+            debuglog("{} already released".format(self))
             return
 
         self._tryWakeUp()
@@ -163,12 +183,12 @@ class BaseLock:
             if w_access.mode == 'counting':
                 if num_excl > 0 or num_counting >= self.maxCount:
                     break
-                num_counting = num_counting + 1
+                num_counting = num_counting + w_access.count
             else:
                 # w_access.mode == 'exclusive'
                 if num_excl > 0 or num_counting > 0:
                     break
-                num_excl = num_excl + 1
+                num_excl = num_excl + w_access.count
 
             # If the waiter has a deferred, wake it up and clear the deferred
             # from the wait queue entry to indicate that it has been woken.
@@ -177,31 +197,56 @@ class BaseLock:
                 eventually(d.callback, self)
 
     def waitUntilMaybeAvailable(self, owner, access):
-        """Fire when the lock *might* be available. The caller will need to
-        check with isAvailable() when the deferred fires. This loose form is
-        used to avoid deadlocks. If we were interested in a stronger form,
-        this would be named 'waitUntilAvailable', and the deferred would fire
-        after the lock had been claimed.
+        """Fire when the lock *might* be available. The deferred may be fired spuriously and
+        the lock is not necessarily available, thus the caller will need to check with
+        isAvailable() when the deferred fires.
+
+        A single requester must not have more than one pending waitUntilMaybeAvailable() on a
+        single lock.
+
+        The caller must guarantee, that once the returned deferred is fired, either the lock is
+        checked for availability and claimed if it's available, or the it is indicated as no
+        longer interesting by calling stopWaitingUntilAvailable(). The caller does not need to
+        do this immediately after deferred is fired, an eventual execution is sufficient.
         """
-        debuglog("%s waitUntilAvailable(%s)" % (self, owner))
+        debuglog("{} waitUntilAvailable({})".format(self, owner))
         assert isinstance(access, LockAccess)
         if self.isAvailable(owner, access):
             return defer.succeed(self)
         d = defer.Deferred()
 
         # Are we already in the wait queue?
-        w = [i for i, w in enumerate(self.waiting) if w[0] is owner]
-        if w:
-            self.waiting[w[0]] = (owner, access, d)
+        w_index = self._find_waiting(owner)
+        if w_index is not None:
+            _, _, old_d = self.waiting[w_index]
+            assert old_d is None, "waitUntilMaybeAvailable() must not be called again before the " \
+                                  "previous deferred fired"
+            self.waiting[w_index] = (owner, access, d)
         else:
             self.waiting.append((owner, access, d))
         return d
 
     def stopWaitingUntilAvailable(self, owner, access, d):
-        debuglog("%s stopWaitingUntilAvailable(%s)" % (self, owner))
+        """ Stop waiting for lock to become available. `d` must be the result of a previous call
+            to `waitUntilMaybeAvailable()`. If `d` has not been woken up already by calling its
+            callback, it will be done as part of this function
+        """
+        debuglog("{} stopWaitingUntilAvailable({})".format(self, owner))
         assert isinstance(access, LockAccess)
-        assert (owner, access, d) in self.waiting
-        self.waiting = [w for w in self.waiting if w[0] is not owner]
+
+        w_index = self._find_waiting(owner)
+        assert w_index is not None, "The owner was not waiting for the lock"
+        _, _, old_d = self.waiting[w_index]
+        if old_d is not None:
+            assert d is old_d, "The supplied deferred must be a result of waitUntilMaybeAvailable()"
+            del self.waiting[w_index]
+            d.callback(None)
+        else:
+            del self.waiting[w_index]
+            # if the callback has already been woken up, then it must schedule another waiter,
+            # otherwise we will have an available lock with a waiter list and no-one to wake the
+            # waiters up.
+            self._tryWakeUp()
 
     def isOwner(self, owner, access):
         return (owner, access) in self.owners
@@ -292,19 +337,26 @@ class LockAccess(util.ComparableMixin):
 
     @param mode: Mode of accessing the lock.
     @type  mode: A string, either 'counting' or 'exclusive'.
+
+    @param count: How many units does the access occupy
+    @type  count: Integer, not negative, default is 1 for backwards
+                  compatibility
     """
 
-    compare_attrs = ('lockid', 'mode')
+    compare_attrs = ('lockid', 'mode', 'count')
 
-    def __init__(self, lockid, mode, _skipChecks=False):
+    def __init__(self, lockid, mode, count=1):
         self.lockid = lockid
         self.mode = mode
+        self.count = count
 
-        if not _skipChecks:
-            # these checks fail with mock < 0.8.0 when lockid is a Mock
-            # TODO: remove this in Buildbot-0.9.0+
-            assert isinstance(lockid, (MasterLock, WorkerLock))
-            assert mode in ['counting', 'exclusive']
+        assert isinstance(lockid, (MasterLock, WorkerLock))
+        assert mode in ['counting', 'exclusive']
+        assert isinstance(count, int)
+        if mode == 'exclusive':
+            assert count == 1
+        else:
+            assert count >= 0
 
 
 class BaseLockId(util.ComparableMixin):
@@ -320,10 +372,12 @@ class BaseLockId(util.ComparableMixin):
       class variable.
     """
 
-    def access(self, mode):
+    def access(self, mode, count=1):
         """ Express how the lock should be accessed """
         assert mode in ['counting', 'exclusive']
-        return LockAccess(self, mode)
+        assert isinstance(count, int)
+        assert count >= 0
+        return LockAccess(self, mode, count)
 
     def defaultAccess(self):
         """ For buildbot 0.7.7 compatibility: When user doesn't specify an access
