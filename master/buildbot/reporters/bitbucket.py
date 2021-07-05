@@ -18,7 +18,8 @@ from urllib.parse import urlparse
 from twisted.internet import defer
 
 from buildbot.process.results import SUCCESS
-from buildbot.reporters import http
+from buildbot.reporters.base import ReporterBase
+from buildbot.reporters.generators.build import BuildStartEndStatusGenerator
 from buildbot.util import httpclientservice
 from buildbot.util.logger import Logger
 
@@ -36,19 +37,33 @@ _GET_TOKEN_DATA = {
 }
 
 
-class BitbucketStatusPush(http.HttpStatusPushBase):
+class BitbucketStatusPush(ReporterBase):
     name = "BitbucketStatusPush"
 
-    @defer.inlineCallbacks
-    def reconfigService(self, oauth_key, oauth_secret,
-                        base_url=_BASE_URL,
-                        oauth_url=_OAUTH_URL,
-                        **kwargs):
-        oauth_key, oauth_secret = yield self.renderSecrets(oauth_key, oauth_secret)
-        yield super().reconfigService(**kwargs)
+    def checkConfig(self, oauth_key, oauth_secret, base_url=_BASE_URL, oauth_url=_OAUTH_URL,
+                    debug=None, verify=None, generators=None,
+                    **kwargs):
 
-        if base_url.endswith('/'):
-            base_url = base_url[:-1]
+        if generators is None:
+            generators = self._create_default_generators()
+
+        super().checkConfig(generators=generators, **kwargs)
+        httpclientservice.HTTPClientService.checkAvailable(self.__class__.__name__)
+
+    @defer.inlineCallbacks
+    def reconfigService(self, oauth_key, oauth_secret, base_url=_BASE_URL, oauth_url=_OAUTH_URL,
+                        debug=None, verify=None, generators=None, **kwargs):
+        oauth_key, oauth_secret = yield self.renderSecrets(oauth_key, oauth_secret)
+        self.base_url = base_url
+        self.debug = debug
+        self.verify = verify
+
+        if generators is None:
+            generators = self._create_default_generators()
+
+        yield super().reconfigService(generators=generators, **kwargs)
+
+        base_url = base_url.rstrip('/')
 
         self._http = yield httpclientservice.HTTPClientService.getService(
             self.master, base_url,
@@ -58,11 +73,14 @@ class BitbucketStatusPush(http.HttpStatusPushBase):
             self.master, oauth_url, auth=(oauth_key, oauth_secret),
             debug=self.debug, verify=self.verify)
 
+    def _create_default_generators(self):
+        return [BuildStartEndStatusGenerator()]
+
     @defer.inlineCallbacks
-    def send(self, build):
+    def sendMessage(self, reports):
+        build = reports[0]['builds'][0]
         results = build['results']
-        oauth_request = yield self.oauthhttp.post("",
-                                                  data=_GET_TOKEN_DATA)
+        oauth_request = yield self.oauthhttp.post("", data=_GET_TOKEN_DATA)
         if oauth_request.code == 200:
             content_json = yield oauth_request.json()
             token = content_json['access_token']
@@ -94,33 +112,37 @@ class BitbucketStatusPush(http.HttpStatusPushBase):
                 '/'.join([owner, repo, 'commit', sha, 'statuses', 'build'])
 
             response = yield self._http.post(bitbucket_uri, json=body)
-            if response.code != 201:
+            if response.code != 200 and response.code != 201:
                 content = yield response.content()
                 log.error("{code}: unable to upload Bitbucket status {content}",
                           code=response.code, content=content)
 
-    @staticmethod
-    def get_owner_and_repo(repourl):
+    def get_owner_and_repo(self, repourl):
         """
-        Takes a git repository URL from Bitbucket and tries to determine the owner and repository name
+        Takes a git repository URL from Bitbucket and tries to determine the owner and repository
+        name
         :param repourl: Bitbucket git repo in the form of
-                    git@bitbucket.com:OWNER/REPONAME.git
-                    https://bitbucket.com/OWNER/REPONAME.git
-                    ssh://git@bitbucket.com/OWNER/REPONAME.git
+                    git@bitbucket.org:OWNER/REPONAME.git
+                    https://bitbucket.org/OWNER/REPONAME.git
+                    ssh://git@bitbucket.org/OWNER/REPONAME.git
+                    https://api.bitbucket.org/2.0/repositories/OWNER/REPONAME
         :return: owner, repo: The owner of the repository and the repository name
         """
         parsed = urlparse(repourl)
 
-        if parsed.scheme:
-            path = parsed.path[1:]
+        base_parsed = urlparse(self.base_url)
+        if parsed.path.startswith(base_parsed.path):
+            path = parsed.path.replace(base_parsed.path, "")
+        elif parsed.scheme:
+            path = parsed.path
         else:
             # we assume git@host:owner/repo.git here
             path = parsed.path.split(':', 1)[-1]
 
+        path = path.lstrip('/')
         if path.endswith('.git'):
             path = path[:-4]
-        while path.endswith('/'):
-            path = path[:-1]
+        path = path.rstrip('/')
 
         parts = path.split('/')
 

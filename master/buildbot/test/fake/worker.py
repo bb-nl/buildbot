@@ -42,7 +42,7 @@ class FakeWorker:
         self.workerid = 383
 
     def acquireLocks(self):
-        pass
+        return True
 
     def releaseLocks(self):
         pass
@@ -168,7 +168,7 @@ class WorkerController(SeverWorkerConnectionMixin):
     def disconnect_worker(self):
         super().disconnect_worker()
         if self.remote_worker is None:
-            return
+            return None
         self.worker.conn, conn = None, self.worker.conn
         # LocalWorker does actually disconnect, so we must force disconnection
         # via detached
