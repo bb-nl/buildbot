@@ -39,6 +39,25 @@ except ImportError:
     from distutils.command.sdist import sdist
     from distutils.core import setup
 
+BUILDING_WHEEL = bool("bdist_wheel" in sys.argv)
+
+
+class our_install_data(install_data):
+
+    def finalize_options(self):
+        self.set_undefined_options('install',
+                                   ('install_lib', 'install_dir'),
+                                   )
+        install_data.finalize_options(self)
+
+    def run(self):
+        install_data.run(self)
+        # ensure there's a buildbot_worker/VERSION file
+        fn = os.path.join(self.install_dir, 'buildbot_worker', 'VERSION')
+        with open(fn, 'w') as f:
+            f.write(version)
+        self.outfiles.append(fn)
+
 
 class our_install_data(install_data):
 
@@ -110,11 +129,12 @@ setup_args = {
         "buildbot_worker.commands",
         "buildbot_worker.scripts",
         "buildbot_worker.monkeypatches",
+    ] + ([] if BUILDING_WHEEL else [  # skip tests for wheels (save 40% of the archive)
         "buildbot_worker.test",
         "buildbot_worker.test.fake",
         "buildbot_worker.test.unit",
         "buildbot_worker.test.util",
-    ],
+    ]),
     # mention data_files, even if empty, so install_data is called and
     # VERSION gets copied
     'data_files': [("buildbot_worker", [])],
@@ -142,6 +162,7 @@ if sys.platform == "win32":
     setup_args['zip_safe'] = False
 
 twisted_ver = ">= 17.9.0"
+autobahn_ver = ">= 0.16.0"
 
 if setuptools is not None:
     setup_args['install_requires'] = [
@@ -149,9 +170,21 @@ if setuptools is not None:
         'future',
     ]
 
+    if sys.version_info.major >= 3:
+        # Message pack is only supported on Python 3
+        setup_args['install_requires'] += [
+            'autobahn ' + autobahn_ver,
+            'msgpack >= 0.6.0',
+        ]
+
+    # buildbot_worker_windows_service needs pywin32
+    if sys.platform == "win32":
+        setup_args['install_requires'].append('pywin32')
+
     # Unit test hard dependencies.
     test_deps = [
         'mock',
+        'psutil',
     ]
 
     setup_args['tests_require'] = test_deps
@@ -162,7 +195,7 @@ if setuptools is not None:
             # spellcheck introduced in version 1.4.0
             'pylint>=1.4.0',
             'pyenchant',
-            'flake8~=2.6.0',
+            'flake8~=3.9.0',
         ] + test_deps,
     }
 

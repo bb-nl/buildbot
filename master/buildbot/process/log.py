@@ -31,8 +31,9 @@ class Log:
         self.master = master
         self.name = name
 
-        self.subPoint = util.subscription.SubscriptionPoint("%r log" % (name,))
+        self.subPoint = util.subscription.SubscriptionPoint(f"{repr(name)} log")
         self.subscriptions = {}
+        self._finishing = False
         self.finished = False
         self.finishWaiters = []
         self._had_errors = False
@@ -57,7 +58,7 @@ class Log:
         try:
             subcls = cls._byType[type]
         except KeyError as e:
-            raise RuntimeError("Invalid log type %r" % (type,)) from e
+            raise RuntimeError(f"Invalid log type {repr(type)}") from e
         decoder = Log._decoderFromString(logEncoding)
         return subcls(master, name, type, logid, decoder)
 
@@ -97,7 +98,9 @@ class Log:
 
     @defer.inlineCallbacks
     def finish(self):
+        assert not self._finishing, "Did you maybe forget to yield the method?"
         assert not self.finished
+        self._finishing = True
 
         def fToRun():
             self.finished = True
@@ -117,8 +120,8 @@ class Log:
         # start a compressLog call but don't make our caller wait for
         # it to complete
         d = self.master.data.updates.compressLog(self.logid)
-        d.addErrback(
-            log.err, "while compressing log %d (ignored)" % self.logid)
+        d.addErrback(log.err, f"while compressing log {self.logid} (ignored)")
+        self._finishing = False
 
 
 class PlainLog(Log):

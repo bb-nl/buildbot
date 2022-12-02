@@ -219,6 +219,10 @@ class FakeStep(object):
         self.finished_d.callback(None)
 
 
+class FakeBot(base.BotBase):
+    WorkerForBuilder = pb.WorkerForBuilderPbLike
+
+
 class TestWorkerForBuilder(command.CommandTestMixin, unittest.TestCase):
 
     @defer.inlineCallbacks
@@ -228,7 +232,7 @@ class TestWorkerForBuilder(command.CommandTestMixin, unittest.TestCase):
             shutil.rmtree(self.basedir)
         os.makedirs(self.basedir)
 
-        self.bot = base.BotBase(self.basedir, False)
+        self.bot = FakeBot(self.basedir, False)
         self.bot.startService()
 
         # get a WorkerForBuilder object from the bot and wrap it as a fake
@@ -283,14 +287,13 @@ class TestWorkerForBuilder(command.CommandTestMixin, unittest.TestCase):
                                                       workdir='workdir'))
         yield st.wait_for_finish()
 
-        def check(_):
-            self.assertEqual(st.actions, [
-                ['update', [[{'hdr': 'headers'}, 0]]],
-                ['update', [[{'stdout': 'hello\n'}, 0]]],
-                ['update', [[{'rc': 0}, 0]]],
-                ['update', [[{'elapsed': 1}, 0]]],
-                ['complete', None],
-            ])
+        self.assertEqual(st.actions, [
+            ['update', [[{'hdr': 'headers'}, 0]]],
+            ['update', [[{'stdout': 'hello\n'}, 0]]],
+            ['update', [[{'rc': 0}, 0]]],
+            ['update', [[{'elapsed': 1}, 0]]],
+            ['complete', None],
+        ])
 
     @defer.inlineCallbacks
     def test_startCommand_interruptCommand(self):
@@ -358,7 +361,7 @@ class TestWorkerForBuilder(command.CommandTestMixin, unittest.TestCase):
 
         def do_start():
             return self.wfb.callRemote("startCommand", FakeRemote(st),
-                                       "13", "shell", dict())
+                                       "13", "shell", {})
 
         yield self.assertFailure(do_start(), ValueError)
 
@@ -369,7 +372,7 @@ class TestWorkerForBuilder(command.CommandTestMixin, unittest.TestCase):
 
         def do_start():
             return self.wfb.callRemote("startCommand", FakeRemote(st),
-                                       "13", "invalid command", dict())
+                                       "13", "invalid command", {})
 
         unknownCommand = yield self.assertFailure(do_start(), base.UnknownCommand)
         self.assertEqual(str(unknownCommand), "unrecognized WorkerCommand 'invalid command'")

@@ -18,27 +18,41 @@ from __future__ import print_function
 
 from twisted.internet import defer
 
+from buildbot_worker.base import BotBase
 from buildbot_worker.base import WorkerBase
+from buildbot_worker.pb import WorkerForBuilderPbLike
+
+
+class WorkerForBuilderNull(WorkerForBuilderPbLike):
+    pass
+
+
+class BotNull(BotBase):
+    WorkerForBuilder = WorkerForBuilderNull
 
 
 class LocalWorker(WorkerBase):
+    def __init__(self, name, basedir,
+                 umask=None,
+                 unicode_encoding=None,
+                 delete_leftover_dirs=False):
+
+        super().__init__(name, basedir, BotNull, umask=umask,
+                         unicode_encoding=unicode_encoding,
+                         delete_leftover_dirs=delete_leftover_dirs)
 
     @defer.inlineCallbacks
     def startService(self):
         # importing here to avoid dependency on buildbot master package
-        # requires buildot version >= 0.9.0b5
         from buildbot.worker.protocols.null import Connection
 
         yield WorkerBase.startService(self)
         self.workername = self.name
-        conn = Connection(self.parent, self)
+        conn = Connection(self)
         # I don't have a master property, but my parent has.
         master = self.parent.master
         res = yield master.workers.newConnection(conn, self.name)
         if res:
             yield self.parent.attached(conn)
-
-    @defer.inlineCallbacks
-    def stopService(self):
-        yield self.parent.detached()
-        yield WorkerBase.stopService(self)
+            # detached() will be called automatically on connection disconnection which is
+            # invoked from the master side when the AbstarctWorker.stopService() is called.

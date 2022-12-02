@@ -23,6 +23,8 @@ from buildbot.process.properties import Interpolate
 from buildbot.secrets.providers.vault import HashiCorpVaultSecretProvider
 from buildbot.steps.shell import ShellCommand
 from buildbot.test.util.integration import RunMasterBase
+from buildbot.test.util.warnings import assertProducesWarning
+from buildbot.warnings import DeprecatedApiWarning
 
 # This integration test creates a master and worker environment,
 # with one builders and a shellcommand step
@@ -55,21 +57,22 @@ class SecretsConfig(RunMasterBase):
                                    '-e', 'VAULT_ADDR=http://127.0.0.1:8200/',
                                    'vault_for_buildbot',
                                    'vault', 'kv', 'put', 'secret/key1/key2', 'id=val'])
-        except (FileNotFoundError, subprocess.CalledProcessError):
-            raise SkipTest("Vault integration needs docker environment to be setup")
+        except (FileNotFoundError, subprocess.CalledProcessError) as e:
+            raise SkipTest("Vault integration needs docker environment to be setup") from e
 
     def remove_container(self):
         subprocess.call(['docker', 'rm', '-f', 'vault_for_buildbot'])
 
     @defer.inlineCallbacks
     def do_secret_test(self, secret_specifier, expected_obfuscation, expected_value):
-        yield self.setupConfig(masterConfig(secret_specifier=secret_specifier))
+        with assertProducesWarning(DeprecatedApiWarning):
+            yield self.setupConfig(masterConfig(secret_specifier=secret_specifier))
         build = yield self.doForceBuild(wantSteps=True, wantLogs=True)
         self.assertEqual(build['buildid'], 1)
 
         patterns = [
-            "echo -n {}".format(expected_obfuscation),
-            base64.b64encode(expected_value.encode('utf-8')).decode('utf-8'),
+            f"echo {expected_obfuscation}",
+            base64.b64encode((expected_value + "\n").encode('utf-8')).decode('utf-8'),
         ]
 
         res = yield self.checkBuildStepLogExist(build, patterns)
@@ -112,7 +115,7 @@ def masterConfig(secret_specifier):
     )]
 
     f = BuildFactory()
-    f.addStep(ShellCommand(command=Interpolate('echo -n {} | base64'.format(secret_specifier))))
+    f.addStep(ShellCommand(command=Interpolate(f'echo {secret_specifier} | base64')))
 
     c['builders'] = [
         BuilderConfig(name="testy",

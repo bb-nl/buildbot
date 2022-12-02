@@ -13,6 +13,7 @@
 #
 # Copyright Buildbot Team Members
 
+import base64
 import json
 import os
 import random
@@ -62,7 +63,7 @@ class SourceStampExtractor:
         self.branch = branch
         exes = which(self.vcexe)
         if not exes:
-            output("Could not find executable '{}'.".format(self.vcexe))
+            output(f"Could not find executable '{self.vcexe}'.")
             sys.exit(1)
         self.exe = exes[0]
 
@@ -77,7 +78,7 @@ class SourceStampExtractor:
         return d
 
     def _didvc(self, res, cmd):
-        (stdout, stderr, code) = res
+        stdout, _, __ = res
         # 'bzr diff' sets rc=1 if there were any differences.
         # cvs does something similar, so don't bother requiring rc=0.
         return stdout
@@ -92,7 +93,7 @@ class SourceStampExtractor:
     def readPatch(self, diff, patchlevel):
         if not diff:
             diff = None
-        self.patch = (patchlevel, bytes2unicode(diff))
+        self.patch = (patchlevel, diff)
 
     def done(self, res):
         if not self.repository:
@@ -170,7 +171,7 @@ class SVNExtractor(SourceStampExtractor):
         sys.exit(1)
 
     def getPatch(self, res):
-        d = self.dovc(["diff", "-r{}".format(self.baserev)])
+        d = self.dovc(["diff", f"-r{self.baserev}"])
         d.addCallback(self.readPatch, self.patchlevel)
         return d
 
@@ -185,12 +186,12 @@ class BzrExtractor(SourceStampExtractor):
         return d
 
     def get_revision_number(self, out):
-        revno, revid = out.split()
+        _, revid = out.split()
         self.baserev = 'revid:' + revid
         return
 
     def getPatch(self, res):
-        d = self.dovc(["diff", "-r{}..".format(self.baserev)])
+        d = self.dovc(["diff", f"-r{self.baserev}.."])
         d.addCallback(self.readPatch, self.patchlevel)
         return d
 
@@ -206,7 +207,7 @@ class MercurialExtractor(SourceStampExtractor):
             cs = ' '.join(['hg'] + cmd)
             if stderr:
                 stderr = '\n' + stderr.rstrip()
-            raise RuntimeError("{} returned {} {}".format(cs, code, stderr))
+            raise RuntimeError(f"{cs} returned {code} {stderr}")
 
         return stdout
 
@@ -214,11 +215,11 @@ class MercurialExtractor(SourceStampExtractor):
     def getBaseRevision(self):
         upstream = ""
         if self.repository:
-            upstream = "r'{}'".format(self.repository)
+            upstream = f"r'{self.repository}'"
         output = ''
         try:
             output = yield self.dovc(["log", "--template", "{node}\\n", "-r",
-                                      "max(::. - outgoing({}))".format(upstream)])
+                                      f"max(::. - outgoing({upstream}))"])
         except RuntimeError:
             # outgoing() will abort if no default-push/default path is
             # configured
@@ -228,8 +229,7 @@ class MercurialExtractor(SourceStampExtractor):
             output = yield self.dovc(["log", "--template", "{node}\\n", "-r", "p1()"])
         m = re.search(br'^(\w+)', output)
         if not m:
-            raise RuntimeError(
-                "Revision {!r} is not in the right format".format(output))
+            raise RuntimeError(f"Revision {output!r} is not in the right format")
         self.baserev = m.group(0)
 
     def getPatch(self, res):
@@ -259,21 +259,21 @@ class PerforceExtractor(SourceStampExtractor):
         output(b"Could not find change number in output: " + res)
         sys.exit(1)
 
-    def readPatch(self, res, patchlevel):
+    def readPatch(self, diff, patchlevel):
         #
-        # extract the actual patch from "res"
+        # extract the actual patch from "diff"
         #
         if not self.branch:
             output("you must specify a branch")
             sys.exit(1)
         mpatch = ""
         found = False
-        for line in res.split("\n"):
+        for line in diff.split("\n"):
             m = re.search('==== //depot/' + self.branch
                           + r'/([\w/\.\d\-_]+)#(\d+) -', line)
             if m:
-                mpatch += "--- {}#{}\n".format(m.group(1), m.group(2))
-                mpatch += "+++ {}\n".format(m.group(1))
+                mpatch += f"--- {m.group(1)}#{m.group(2)}\n"
+                mpatch += f"+++ {m.group(1)}\n"
                 found = True
             else:
                 mpatch += line
@@ -281,7 +281,7 @@ class PerforceExtractor(SourceStampExtractor):
         if not found:
             output(b"could not parse patch file")
             sys.exit(1)
-        self.patch = (patchlevel, mpatch)
+        self.patch = (patchlevel, unicode2bytes(mpatch))
 
     def getPatch(self, res):
         d = self.dovc(["diff"])
@@ -438,51 +438,44 @@ def getSourceStamp(vctype, treetop, branch=None, repository=None):
     elif vctype == "none":
         return defer.succeed(SourceStamp("", "", (1, ""), ""))
     else:
-        output("unknown vctype '{}'".format(vctype))
+        output(f"unknown vctype '{vctype}'")
         sys.exit(1)
     return cls(treetop, branch, repository).get()
 
 
 def ns(s):
-    return "{}:{},".format(len(s), s)
+    return f"{len(s)}:{s},"
 
 
 def createJobfile(jobid, branch, baserev, patch_level, patch_body, repository,
                   project, who, comment, builderNames, properties):
     # Determine job file version from provided arguments
-    if properties:
+    try:
+        bytes2unicode(patch_body)
         version = 5
-    elif comment:
-        version = 4
-    elif who:
-        version = 3
-    else:
-        version = 2
+    except UnicodeDecodeError:
+        version = 6
+
     job = ""
     job += ns(str(version))
-    if version < 5:
-        job += ns(jobid)
-        job += ns(branch)
-        job += ns(str(baserev))
-        job += ns("{}".format(patch_level))
-        job += ns(patch_body or "")
-        job += ns(repository)
-        job += ns(project)
-        if (version >= 3):
-            job += ns(who)
-        if (version >= 4):
-            job += ns(comment)
-        for bn in builderNames:
-            job += ns(bn)
+    job_dict = {
+        'jobid': jobid,
+        'branch': branch,
+        'baserev': str(baserev),
+        'patch_level': patch_level,
+        'repository': repository,
+        'project': project,
+        'who': who,
+        'comment': comment,
+        'builderNames': builderNames,
+        'properties': properties,
+    }
+    if version > 5:
+        job_dict['patch_body_base64'] = bytes2unicode(base64.b64encode(patch_body))
     else:
-        job += ns(
-            json.dumps({
-                'jobid': jobid, 'branch': branch, 'baserev': str(baserev),
-                'patch_level': patch_level, 'patch_body': patch_body,
-                'repository': repository, 'project': project, 'who': who,
-                'comment': comment, 'builderNames': builderNames,
-                'properties': properties,
-            }))
+        job_dict['patch_body'] = bytes2unicode(patch_body)
+
+    job += ns(json.dumps(job_dict))
     return job
 
 
@@ -500,8 +493,7 @@ def getTopdir(topfile, start=None):
             break                       # we've hit the root
         here = next
         toomany -= 1
-    output("Unable to find topfile '{}' anywhere "
-           "from {} upwards".format(topfile, start))
+    output(f"Unable to find topfile '{topfile}' anywhere from {start} upwards")
     sys.exit(1)
 
 
@@ -521,12 +513,11 @@ class RemoteTryPP(protocol.ProcessProtocol):
     def errReceived(self, data):
         sys.stderr.write(bytes2unicode(data))
 
-    def processEnded(self, status_object):
-        sig = status_object.value.signal
-        rc = status_object.value.exitCode
+    def processEnded(self, reason):
+        sig = reason.value.signal
+        rc = reason.value.exitCode
         if sig is not None or rc != 0:
-            self.d.errback(RuntimeError("remote 'buildbot tryserver' failed"
-                                        ": sig={}, rc={}".format(sig, rc)))
+            self.d.errback(RuntimeError(f"remote 'buildbot tryserver' failed: sig={sig}, rc={rc}"))
             return
         self.d.callback((sig, rc))
 
@@ -567,7 +558,7 @@ class Try(pb.Referenceable):
         # generate a random (unique) string. It would make sense to add a
         # hostname and process ID here, but a) I suspect that would cause
         # windows portability problems, and b) really this is good enough
-        self.bsid = "{}-{}".format(time.time(), random.randint(0, 1000000))
+        self.bsid = f"{time.time()}-{random.randint(0, 1000000)}"
 
         # common options
         branch = self.getopt("branch")
@@ -578,7 +569,7 @@ class Try(pb.Referenceable):
             if difffile == "-":
                 diff = sys.stdin.read()
             else:
-                with open(difffile, "r") as f:
+                with open(difffile, "rb") as f:
                     diff = f.read()
             if not diff:
                 diff = None
@@ -624,12 +615,9 @@ class Try(pb.Referenceable):
     def fakeDeliverJob(self):
         # Display the job to be delivered, but don't perform delivery.
         ss = self.sourcestamp
-        output("Job:\n\tRepository: {}\n\tProject: {}\n\tBranch: {}\n\t"
-               "Revision: {}\n\tBuilders: {}\n{}".format(
-               ss.repository, self.project, ss.branch,
-               ss.revision,
-               self.builderNames,
-               ss.patch[1]))
+        output(f"Job:\n\tRepository: {ss.repository}\n\tProject: {self.project}\n\tBranch: "
+               f"{ss.branch}\n\tRevision: {ss.revision}\n\tBuilders: "
+               f"{self.builderNames}\n{ss.patch[1]}")
         self.buildsetStatus = FakeBuildSetStatus()
         d = defer.Deferred()
         d.callback(True)
@@ -705,8 +693,7 @@ class Try(pb.Referenceable):
             return self.deliver_job_ssh()
         if self.connect == "pb":
             return self.deliver_job_pb()
-        raise RuntimeError("unknown connecttype '{}', "
-                           "should be 'ssh' or 'pb'".format(self.connect))
+        raise RuntimeError(f"unknown connecttype '{self.connect}', should be 'ssh' or 'pb'")
 
     def getStatus(self):
         # returns a Deferred that fires when the builds have finished, and
@@ -817,14 +804,14 @@ class Try(pb.Referenceable):
                     code, text = self.results[n]
                     t = Results[code]
                     if text:
-                        t += " ({})".format(" ".join(text))
+                        t += f' ({" ".join(text)})'
                 elif self.builds[n]:
                     t = self.currentStep[n] or "building"
                     if self.ETA[n]:
-                        t += " [ETA {}s]".format(self.ETA[n] - now())
+                        t += f" [ETA {self.ETA[n] - now()}s]"
                 else:
                     t = "no build"
-                self.announce("{}: {}".format(n, t))
+                self.announce(f"{n}: {t}")
             self.announce("")
         except Exception:
             log.err(None, "printing status")
@@ -839,9 +826,9 @@ class Try(pb.Referenceable):
         happy = True
         for n in names:
             code, text = self.results[n]
-            t = "{}: {}".format(n, Results[code])
+            t = f"{n}: {Results[code]}"
             if text:
-                t += " ({})".format(" ".join(text))
+                t += f' ({" ".join(text)})'
             output(t)
             if code != SUCCESS:
                 happy = False
@@ -878,8 +865,7 @@ class Try(pb.Referenceable):
         if self.connect == "ssh":
             output("Cannot get available builders over ssh.")
             sys.exit(1)
-        raise RuntimeError(
-            "unknown connecttype '{}', should be 'pb'".format(self.connect))
+        raise RuntimeError(f"unknown connecttype '{self.connect}', should be 'pb'")
 
     def announce(self, message):
         if not self.quiet:
@@ -887,7 +873,7 @@ class Try(pb.Referenceable):
 
     @defer.inlineCallbacks
     def run_impl(self):
-        output("using '{}' connect method".format(self.connect))
+        output(f"using '{self.connect}' connect method")
         self.exitcode = 0
 
         # we can't do spawnProcess until we're inside reactor.run(), so force asynchronous execution

@@ -28,7 +28,7 @@ from buildbot.test.fake import httpclientservice as fakehttpclientservice
 from buildbot.test.fake.secrets import FakeSecretStorage
 from buildbot.test.fake.web import FakeRequest
 from buildbot.test.fake.web import fakeMasterForHooks
-from buildbot.test.util.misc import TestReactorMixin
+from buildbot.test.reactor import TestReactorMixin
 from buildbot.util import unicode2bytes
 from buildbot.www.change_hook import ChangeHookResource
 from buildbot.www.hooks.github import _HEADER_EVENT
@@ -581,7 +581,7 @@ def _prepare_github_change_hook(testcase, **params):
 
 def _prepare_request(event, payload, _secret=None, headers=None):
     if headers is None:
-        headers = dict()
+        headers = {}
 
     request = FakeRequest()
 
@@ -592,7 +592,7 @@ def _prepare_request(event, payload, _secret=None, headers=None):
     }
 
     assert isinstance(payload, (bytes, list)), \
-        "payload can only be bytes or list, not {}".format(type(payload))
+        f"payload can only be bytes or list, not {type(payload)}"
 
     if isinstance(payload, bytes):
         request.content = BytesIO(payload)
@@ -602,8 +602,7 @@ def _prepare_request(event, payload, _secret=None, headers=None):
             signature = hmac.new(unicode2bytes(_secret),
                                  msg=unicode2bytes(payload),
                                  digestmod=sha1)
-            request.received_headers[_HEADER_SIGNATURE] = \
-                'sha1={}'.format(signature.hexdigest())
+            request.received_headers[_HEADER_SIGNATURE] = f'sha1={signature.hexdigest()}'
     else:
         request.args[b'payload'] = payload
         request.received_headers[_HEADER_CT] = _CT_ENCODED
@@ -620,7 +619,7 @@ class TestChangeHookConfiguredWithGitChange(unittest.TestCase,
 
     @defer.inlineCallbacks
     def setUp(self):
-        self.setUpTestReactor()
+        self.setup_test_reactor()
         self.changeHook = _prepare_github_change_hook(
             self, strict=False, github_property_whitelist=["github.*"])
         self.master = self.changeHook.master
@@ -911,7 +910,7 @@ class TestChangeHookConfiguredWithGitChangeCustomPullrequestRef(
 
     @defer.inlineCallbacks
     def setUp(self):
-        self.setUpTestReactor()
+        self.setup_test_reactor()
         self.changeHook = _prepare_github_change_hook(
             self, strict=False, github_property_whitelist=["github.*"],
             pullrequest_ref="head")
@@ -947,7 +946,7 @@ class TestChangeHookConfiguredWithGitChangeCustomPullrequestRefWithAuth(
 
     @defer.inlineCallbacks
     def setUp(self):
-        self.setUpTestReactor()
+        self.setup_test_reactor()
         _token = '7e076f41-b73a-4045-a817'
         self.changeHook = _prepare_github_change_hook(
             self, strict=False, github_property_whitelist=["github.*"],
@@ -982,12 +981,61 @@ class TestChangeHookConfiguredWithGitChangeCustomPullrequestRefWithAuth(
         self.assertEqual(change["branch"], "refs/pull/50/head")
 
 
+class TestChangeHookRefWithAuth(unittest.TestCase, TestReactorMixin):
+
+    secret_name = 'secretkey'
+    secret_value = 'githubtoken'
+
+    @defer.inlineCallbacks
+    def setUp(self):
+        self.setup_test_reactor()
+
+        self.changeHook = \
+            _prepare_github_change_hook(self, strict=False, github_property_whitelist=["github.*"],
+                                        token=util.Secret(self.secret_name))
+
+        self.master = self.changeHook.master
+        fake_headers = {
+            'User-Agent': 'Buildbot',
+            'Authorization': 'token ' + self.secret_value,
+        }
+        self._http = yield fakehttpclientservice.HTTPClientService.getService(
+            self.master, self, 'https://api.github.com', headers=fake_headers,
+            debug=False, verify=False)
+
+        fake_storage = FakeSecretStorage()
+        secret_service = SecretManager()
+        secret_service.services = [fake_storage]
+        yield secret_service.setServiceParent(self.master)
+
+        yield self.master.startService()
+
+        fake_storage.reconfigService(secretdict={self.secret_name: self.secret_value})
+
+    @defer.inlineCallbacks
+    def tearDown(self):
+        yield self.master.stopService()
+
+    @defer.inlineCallbacks
+    def test_git_pull_request(self):
+        commit_endpoint = '/repos/defunkt/github/commits/05c588ba8cd510ecbe112d020f215facb17817a7'
+        files_endpoint = '/repos/defunkt/github/pulls/50/files'
+        self._http.expect('get', commit_endpoint, content_json=gitJsonPayloadCommit)
+        self._http.expect('get', files_endpoint, content_json=gitJsonPayloadFiles)
+
+        self.request = _prepare_request('pull_request', gitJsonPayloadPullRequest)
+        yield self.request.test_render(self.changeHook)
+        self.assertEqual(len(self.changeHook.master.data.updates.changesAdded), 1)
+        change = self.changeHook.master.data.updates.changesAdded[0]
+        self.assertEqual(change["branch"], "refs/pull/50/merge")
+
+
 class TestChangeHookConfiguredWithAuthAndCustomSkips(unittest.TestCase,
                                                      TestReactorMixin):
 
     @defer.inlineCallbacks
     def setUp(self):
-        self.setUpTestReactor()
+        self.setup_test_reactor()
         _token = '7e076f41-b73a-4045-a817'
         self.changeHook = _prepare_github_change_hook(
             self, strict=False, skips=[r'\[ *bb *skip *\]'], token=_token)
@@ -1074,7 +1122,7 @@ class TestChangeHookConfiguredWithAuth(unittest.TestCase, TestReactorMixin):
 
     @defer.inlineCallbacks
     def setUp(self):
-        self.setUpTestReactor()
+        self.setup_test_reactor()
 
         _token = '7e076f41-b73a-4045-a817'
         self.changeHook = _prepare_github_change_hook(
@@ -1196,7 +1244,7 @@ class TestChangeHookConfiguredWithCustomApiRoot(unittest.TestCase,
 
     @defer.inlineCallbacks
     def setUp(self):
-        self.setUpTestReactor()
+        self.setup_test_reactor()
         self.changeHook = _prepare_github_change_hook(
             self, strict=False, github_api_endpoint='https://black.magic.io')
         self.master = self.changeHook.master
@@ -1230,7 +1278,7 @@ class TestChangeHookConfiguredWithCustomApiRootWithAuth(unittest.TestCase,
 
     @defer.inlineCallbacks
     def setUp(self):
-        self.setUpTestReactor()
+        self.setup_test_reactor()
 
         _token = '7e076f41-b73a-4045-a817'
         self.changeHook = _prepare_github_change_hook(
@@ -1270,7 +1318,7 @@ class TestChangeHookConfiguredWithStrict(unittest.TestCase, TestReactorMixin):
     _SECRET = 'somethingreallysecret'
 
     def setUp(self):
-        self.setUpTestReactor()
+        self.setup_test_reactor()
 
         fakeStorageService = FakeSecretStorage()
         fakeStorageService.reconfigService(secretdict={"secret_key": self._SECRET})
@@ -1384,7 +1432,7 @@ class TestChangeHookConfiguredWithCodebaseValue(unittest.TestCase,
                                                 TestReactorMixin):
 
     def setUp(self):
-        self.setUpTestReactor()
+        self.setup_test_reactor()
         self.changeHook = _prepare_github_change_hook(self, codebase='foobar')
 
     @defer.inlineCallbacks
@@ -1410,7 +1458,7 @@ class TestChangeHookConfiguredWithCodebaseFunction(unittest.TestCase,
                                                    TestReactorMixin):
 
     def setUp(self):
-        self.setUpTestReactor()
+        self.setup_test_reactor()
         self.changeHook = _prepare_github_change_hook(
             self, codebase=_codebase_function)
 
@@ -1433,7 +1481,7 @@ class TestChangeHookConfiguredWithCustomEventHandler(unittest.TestCase,
                                                      TestReactorMixin):
 
     def setUp(self):
-        self.setUpTestReactor()
+        self.setup_test_reactor()
 
         class CustomGitHubEventHandler(GitHubEventHandler):
             def handle_ping(self, _, __):

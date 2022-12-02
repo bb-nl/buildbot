@@ -17,16 +17,11 @@ import os
 import sys
 from io import StringIO
 
-from twisted.internet import threads
 from twisted.python import log
-from twisted.python import threadpool
 from twisted.trial.unittest import TestCase
 
 import buildbot
 from buildbot.process.buildstep import BuildStep
-from buildbot.test.fake.reactor import NonThreadPool
-from buildbot.test.fake.reactor import TestReactor
-from buildbot.util.eventual import _setReactor
 
 
 class PatcherMixin:
@@ -65,29 +60,6 @@ class StdoutAssertionsMixin:
 
     def getStdout(self):
         return self.stdout.getvalue().strip()
-
-
-class TestReactorMixin:
-
-    """
-    Mix this in to get TestReactor as self.reactor which is correctly cleaned up
-    at the end
-    """
-    def setUpTestReactor(self):
-        self.patch(threadpool, 'ThreadPool', NonThreadPool)
-        self.reactor = TestReactor()
-        _setReactor(self.reactor)
-
-        def deferToThread(f, *args, **kwargs):
-            return threads.deferToThreadPool(self.reactor, self.reactor.getThreadPool(),
-                                             f, *args, **kwargs)
-        self.patch(threads, 'deferToThread', deferToThread)
-
-        # During shutdown sequence we must first stop the reactor and only then
-        # set unset the reactor used for eventually() because any callbacks
-        # that are run during reactor.stop() may use eventually() themselves.
-        self.addCleanup(_setReactor, None)
-        self.addCleanup(self.reactor.stop)
 
 
 class TimeoutableTestCase(TestCase):
@@ -191,16 +163,16 @@ class BuildDictLookAlike:
 
     def __eq__(self, b):
         if sorted(b.keys()) != self.keys:
-            print(set(b.keys()) - set(self.keys))
-            print(set(self.keys) - set(b.keys()))
-            return False
+            raise AssertionError('BuildDictLookAlike is not equal to build: '
+                                 f'Extra keys: {set(b.keys()) - set(self.keys)} '
+                                 f'Missing keys: {set(self.keys) - set(b.keys())}')
         for k, v in self.assertions.items():
             if b[k] != v:
                 return False
         return True
 
     def __ne__(self, b):
-        return not (self == b)
+        return not self == b
 
     def __repr__(self):
         return "{ any build }"

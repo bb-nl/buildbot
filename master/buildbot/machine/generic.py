@@ -17,7 +17,6 @@ import os
 import stat
 
 from twisted.internet import defer
-from twisted.internet import utils
 from twisted.python import log
 from zope.interface import implementer
 
@@ -26,6 +25,7 @@ from buildbot.interfaces import IMachineAction
 from buildbot.machine.latent import AbstractLatentMachine
 from buildbot.util import misc
 from buildbot.util import private_tempdir
+from buildbot.util import runprocess
 from buildbot.util.git import getSshArgsForKeys
 from buildbot.util.git import getSshKnownHostsContents
 
@@ -38,8 +38,7 @@ class GenericLatentMachine(AbstractLatentMachine):
         for action, arg_name in [(start_action, 'start_action'),
                                  (stop_action, 'stop_action')]:
             if not IMachineAction.providedBy(action):
-                msg = "{} of {} does not implement required " \
-                      "interface".format(arg_name, self.name)
+                msg = f"{arg_name} of {self.name} does not implement required interface"
                 raise Exception(msg)
 
     @defer.inlineCallbacks
@@ -56,13 +55,11 @@ class GenericLatentMachine(AbstractLatentMachine):
 
 
 @defer.inlineCallbacks
-def runProcessLogFailures(bin, args, expectedCode=0):
-    stdout, stderr, code = yield utils.getProcessOutputAndValue(bin, args)
+def runProcessLogFailures(reactor, args, expectedCode=0):
+    code, stdout, stderr = yield runprocess.run_process(reactor, args)
     if code != expectedCode:
-        log.err(('Got unexpected return code when running {} {}: '
-                 'code: {}, stdout: {}, stderr: {}').format(bin, args,
-                                                            code, stdout,
-                                                            stderr))
+        log.err(f'Got unexpected return code when running {args}: '
+                f'code: {code}, stdout: {stdout}, stderr: {stderr}')
         return False
     return True
 
@@ -76,7 +73,7 @@ class _LocalMachineActionMixin:
     @defer.inlineCallbacks
     def perform(self, manager):
         args = yield manager.renderSecrets(self._command)
-        return (yield runProcessLogFailures(args[0], args[1:]))
+        return (yield runProcessLogFailures(manager.master.reactor, args))
 
 
 class _SshActionMixin:
@@ -100,7 +97,7 @@ class _SshActionMixin:
         args = getSshArgsForKeys(key_path, known_hosts_path)
         args.append((yield manager.renderSecrets(self._host)))
         args.extend((yield manager.renderSecrets(self._remoteCommand)))
-        return (yield runProcessLogFailures(self._sshBin, args))
+        return (yield runProcessLogFailures(manager.master.reactor, [self._sshBin] + args))
 
     @defer.inlineCallbacks
     def _prepareSshKeys(self, manager, temp_dir_path):
@@ -120,7 +117,7 @@ class _SshActionMixin:
             known_hosts_path = os.path.join(temp_dir_path, 'ssh-known-hosts')
             misc.writeLocalFile(known_hosts_path, ssh_host_key_data)
 
-        defer.returnValue((key_path, known_hosts_path))
+        return (key_path, known_hosts_path)
 
     @defer.inlineCallbacks
     def perform(self, manager):
@@ -134,7 +131,7 @@ class _SshActionMixin:
                 ret = yield self._performImpl(manager, key_path, hosts_path)
         else:
             ret = yield self._performImpl(manager, None, None)
-        defer.returnValue(ret)
+        return ret
 
 
 @implementer(IMachineAction)

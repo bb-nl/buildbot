@@ -191,6 +191,10 @@ the following approach might be helpful:
 
 .. code-block:: python
 
+    from buildbot.util.async_sort import async_sort
+    from twisted.internet import defer
+
+    @defer.inlineCallbacks
     def prioritizeBuilders(buildmaster, builders):
         """Prioritize builders. First, prioritize inactive builders.
         Second, consider the last time a job was completed (no job is infinite past).
@@ -200,8 +204,13 @@ the following approach might be helpful:
         def isBuilding(b):
             return bool(b.building) or bool(b.old_building)
 
-        builders.sort(key = lambda b: (isBuilding(b), b.getNewestCompleteTime(),
-                                       b.getOldestRequestTime()))
+        @defer.inlineCallbacks
+        def key(b):
+            newest_complete_time = yield b.getNewestCompleteTime()
+            oldest_request_time = yield b.getOldestRequestTime()
+            return (isBuilding(b), newest_complete_time, oldest_request_time)
+
+        async_sort(builders, key)
         return builders
 
     c['prioritizeBuilders'] = prioritizeBuilders
@@ -595,7 +604,11 @@ Overriding these members ensures that builds aren't ran on incompatible workers 
 
         This method is responsible for starting instance that will try to connect with this master.
         A deferred should be returned.
-        Any problems should use an errback.
+
+        Any problems should use an errback or exception.
+        When the error is likely related to infrastructure problem and the worker should be paused in case it produces too many errors, then ``LatentWorkerFailedToSubstantiate`` should be thrown.
+        When the error is related to the properties of the build request, such as renderable Docker image, then ``LatentWorkerCannotSubstantiate`` should be thrown.
+
         The callback value can be ``None``, or can be an iterable of short strings to include in the "substantiate success" status message, such as identifying the instance that started.
         Buildbot will ensure that a single worker will never have its ``start_instance`` called before any previous calls to ``start_instance`` or ``stop_instance`` finish.
         Additionally, for each ``start_instance`` call, exactly one corresponding call to ``stop_instance`` will be done eventually.
@@ -653,8 +666,8 @@ Factory Workdir Functions
 
 .. note::
 
-    While factory workdir function is still supported, it is better to just use the fact that workdir is a :index:`renderables <renderable>` attribute of every step.
-    A Renderable has access to much more contextual information, and also can return a deferred.
+    While the factory workdir function is still supported, it is better to just use the fact that workdir is a :index:`renderable <renderable>` attribute of a step.
+    A Renderable has access to much more contextual information and can also return a deferred.
     So you could say ``build_factory.workdir = util.Interpolate("%(src:repository)s`` to achieve similar goal.
 
 It is sometimes helpful to have a build's workdir determined at runtime based on the parameters of the build.
@@ -830,7 +843,7 @@ Updating Status Strings
 
 Each step can summarize its current status in a very short string.
 For example, a compile step might display the file being compiled.
-This information can be helpful users eager to see their build finish.
+This information can be helpful to users eager to see their build finish.
 
 Similarly, a build has a set of short strings collected from its steps summarizing the overall state of the build.
 Useful information here might include the number of tests run, but probably not the results of a ``make clean`` step.
@@ -987,7 +1000,7 @@ The full version is in :src:`master/buildbot/steps/python_twisted.py`.
 This parser only pays attention to stdout, since that's where trial writes the progress lines.
 It has a mode flag named ``finished`` to ignore everything after the ``====`` marker, and a scary-looking regular expression to match each line while hopefully ignoring other messages that might get displayed as the test runs.
 
-Each time it identifies a test has been completed, it increments its counter and delivers the new progress value to the step with ``self.step.setProgress``.
+Each time it identifies that a test has been completed, it increments its counter and delivers the new progress value to the step with ``self.step.setProgress``.
 This helps Buildbot to determine the ETA for the step.
 
 To connect this parser into the :bb:step:`Trial` build step, ``Trial.__init__`` ends with the following clause:

@@ -15,49 +15,30 @@
 
 import mock
 
-from twisted.internet import defer
 from twisted.trial import unittest
 
-from buildbot.test.fake import fakemaster
 from buildbot.test.fake import fakeprotocol
+from buildbot.test.reactor import TestReactorMixin
 from buildbot.test.util import protocols
-from buildbot.test.util.misc import TestReactorMixin
 from buildbot.worker.protocols import base
-
-
-class TestListener(TestReactorMixin, unittest.TestCase):
-
-    @defer.inlineCallbacks
-    def test_constructor(self):
-        self.setUpTestReactor()
-        master = fakemaster.make_master(self)
-        listener = base.Listener()
-        yield listener.setServiceParent(master)
-        self.assertEqual(listener.master, master)
 
 
 class TestFakeConnection(protocols.ConnectionInterfaceTest,
                          TestReactorMixin, unittest.TestCase):
 
     def setUp(self):
-        self.setUpTestReactor()
-        self.master = fakemaster.make_master(self)
+        self.setup_test_reactor()
         self.worker = mock.Mock()
-        self.conn = fakeprotocol.FakeConnection(self.master, self.worker)
+        self.conn = fakeprotocol.FakeConnection(self.worker)
 
 
 class TestConnection(protocols.ConnectionInterfaceTest,
                      TestReactorMixin, unittest.TestCase):
 
     def setUp(self):
-        self.setUpTestReactor()
-        self.master = fakemaster.make_master(self)
+        self.setup_test_reactor()
         self.worker = mock.Mock()
-        self.conn = base.Connection(self.master, self.worker)
-
-    def test_constructor(self):
-        self.assertEqual(self.conn.master, self.master)
-        self.assertEqual(self.conn.worker, self.worker)
+        self.conn = base.Connection(self.worker.workername)
 
     def test_notify(self):
         cb = mock.Mock()

@@ -15,7 +15,6 @@
 
 import functools
 import inspect
-import textwrap
 
 from twisted.internet import defer
 from twisted.python import reflect
@@ -23,7 +22,7 @@ from twisted.python import reflect
 from buildbot.data import base
 from buildbot.data import exceptions
 from buildbot.data import resultspec
-from buildbot.data.types import Entity
+from buildbot.util import bytes2unicode
 from buildbot.util import pathmatch
 from buildbot.util import service
 
@@ -79,7 +78,8 @@ class DataConnector(service.AsyncService):
             if inspect.isclass(obj) and issubclass(obj, base.ResourceType):
                 rtype = obj(self.master)
                 setattr(self.rtypes, rtype.name, rtype)
-
+                setattr(self.plural_rtypes, rtype.plural, rtype)
+                self.graphql_rtypes[rtype.entityType.toGraphQLTypeName()] = rtype
                 # put its update methods into our 'updates' attribute
                 for name in dir(rtype):
                     o = getattr(rtype, name)
@@ -105,7 +105,9 @@ class DataConnector(service.AsyncService):
 
     def _setup(self):
         self.updates = Updates()
+        self.graphql_rtypes = {}
         self.rtypes = RTypes()
+        self.plural_rtypes = RTypes()
         for moduleName in self.submodules:
             module = reflect.namedModule(moduleName)
             self._scanModule(module)
@@ -118,13 +120,30 @@ class DataConnector(service.AsyncService):
                 "Invalid path: " + "/".join([str(p) for p in path])) from e
 
     def getResourceType(self, name):
-        return getattr(self.rtypes, name)
+        return getattr(self.rtypes, name, None)
 
-    @defer.inlineCallbacks
+    def getEndPointForResourceName(self, name):
+        rtype = getattr(self.rtypes, name, None)
+        rtype_plural = getattr(self.plural_rtypes, name, None)
+        if rtype is not None:
+            return rtype.getDefaultEndpoint()
+        elif rtype_plural is not None:
+            return rtype_plural.getCollectionEndpoint()
+        return None
+
+    def getResourceTypeForGraphQlType(self, type):
+        if type not in self.graphql_rtypes:
+            raise RuntimeError(f"Can't get rtype for {type}: {self.graphql_rtypes.keys()}")
+        return self.graphql_rtypes.get(type)
+
     def get(self, path, filters=None, fields=None, order=None,
             limit=None, offset=None):
         resultSpec = resultspec.ResultSpec(filters=filters, fields=fields,
                                            order=order, limit=limit, offset=offset)
+        return self.get_with_resultspec(path, resultSpec)
+
+    @defer.inlineCallbacks
+    def get_with_resultspec(self, path, resultSpec):
         endpoint, kwargs = self.getEndpoint(path)
         rv = yield endpoint.get(resultSpec, kwargs)
         if resultSpec:
@@ -153,55 +172,93 @@ class DataConnector(service.AsyncService):
                               type_spec=v.rtype.entityType.getSpec()))
         return paths
 
-    @functools.lru_cache(1)
-    def get_graphql_schema(self):
-        """Return the graphQL Schema of the buildbot data model
-        """
-        types = {}
-        schema = textwrap.dedent("""
-        # custom scalar types for buildbot data model
-        scalar Date   # stored as utc unix timestamp
-        scalar Binary # arbitrary data stored as base85
-        scalar JSON  # arbitrary json stored as string, mainly used for properties values
-        """)
+    def resultspec_from_jsonapi(self, req_args, entityType, is_collection):
 
-        # type dependencies must be added recursively
-        def add_dependent_types(ent):
-            typename = ent.toGraphQLTypeName()
-            if typename not in types and isinstance(ent, Entity):
-                types[typename] = ent
-            for dtyp in ent.graphQLDependentTypes():
-                add_dependent_types(dtyp)
+        def checkFields(fields, negOk=False):
+            for field in fields:
+                k = bytes2unicode(field)
+                if k[0] == '-' and negOk:
+                    k = k[1:]
+                if k not in entityType.fieldNames:
+                    raise exceptions.InvalidQueryParameter(f"no such field '{k}'")
 
-        # root query contain the list of item available directly
-        # mapped against the rootLinks
-        schema += "type Query {\n"
+        limit = offset = order = fields = None
+        filters, properties = [], []
+        limit = offset = order = fields = None
+        filters, properties = [], []
+        for arg in req_args:
+            argStr = bytes2unicode(arg)
+            if argStr == 'order':
+                order = tuple(bytes2unicode(o) for o in req_args[arg])
+                checkFields(order, True)
+            elif argStr == 'field':
+                fields = req_args[arg]
+                checkFields(fields, False)
+            elif argStr == 'limit':
+                try:
+                    limit = int(req_args[arg][0])
+                except Exception as e:
+                    raise exceptions.InvalidQueryParameter('invalid limit') from e
+            elif argStr == 'offset':
+                try:
+                    offset = int(req_args[arg][0])
+                except Exception as e:
+                    raise exceptions.InvalidQueryParameter('invalid offset') from e
+            elif argStr == 'property':
+                try:
+                    props = []
+                    for v in req_args[arg]:
+                        if not isinstance(v, (bytes, str)):
+                            raise TypeError(f"Invalid type {type(v)} for {v}")
+                        props.append(bytes2unicode(v))
+                except Exception as e:
+                    raise exceptions.InvalidQueryParameter(
+                        f'invalid property value for {arg}') from e
+                properties.append(resultspec.Property(arg, 'eq', props))
+            elif argStr in entityType.fieldNames:
+                field = entityType.fields[argStr]
+                try:
+                    values = [field.valueFromString(v) for v in req_args[arg]]
+                except Exception as e:
+                    raise exceptions.InvalidQueryParameter(
+                        f'invalid filter value for {argStr}') from e
 
-        for rootlink in sorted(v['name'] for v in self.rootLinks):
-            ep = self.matcher[(rootlink,)][0]
-            typ = ep.rtype.entityType
-            typename = typ.toGraphQLTypeName()
-            add_dependent_types(typ)
-            # build the queriable parameters, via keyFields
-            keyfields = []
-            for field in ep.rtype.keyFields:
-                field_type = ep.rtype.entityType.fields[field].toGraphQLTypeName()
-                keyfields.append(f"{field}: {field_type}")
-            keyfields = ", ".join(keyfields)
-            if keyfields:
-                keyfields = f"({keyfields})"
-            schema += f"  {ep.rtype.plural}{keyfields}: [{typename}]!\n"
+                filters.append(resultspec.Filter(argStr, 'eq', values))
+            elif '__' in argStr:
+                field, op = argStr.rsplit('__', 1)
+                args = req_args[arg]
+                operators = (resultspec.Filter.singular_operators
+                             if len(args) == 1
+                             else resultspec.Filter.plural_operators)
+                if op in operators and field in entityType.fieldNames:
+                    fieldType = entityType.fields[field]
+                    try:
+                        values = [fieldType.valueFromString(v)
+                                  for v in req_args[arg]]
+                    except Exception as e:
+                        raise exceptions.InvalidQueryParameter(
+                            f'invalid filter value for {argStr}') from e
+                    filters.append(resultspec.Filter(field, op, values))
+            else:
+                raise exceptions.InvalidQueryParameter(f"unrecognized query parameter '{argStr}'")
 
-        schema += "}\n"
+        # if ordering or filtering is on a field that's not in fields, bail out
+        if fields:
+            fields = [bytes2unicode(f) for f in fields]
+            fieldsSet = set(fields)
+            if order and {o.lstrip('-') for o in order} - fieldsSet:
+                raise exceptions.InvalidQueryParameter("cannot order on un-selected fields")
+            for filter in filters:
+                if filter.field not in fieldsSet:
+                    raise exceptions.InvalidQueryParameter("cannot filter on un-selected fields")
 
-        for name, typ in types.items():
-            type_spec = typ.toGraphQL()
-            schema += f"type {name} {{\n"
-            for field in type_spec.get('fields', []):
-                field_type = field['type']
-                if not isinstance(field_type, str):
-                    field_type = field_type['type']
-                schema += f"  {field['name']}: {field_type}\n"
-            schema += "}\n"
+        # build the result spec
+        rspec = resultspec.ResultSpec(fields=fields, limit=limit, offset=offset,
+                                      order=order, filters=filters, properties=properties)
 
-        return schema
+        # for singular endpoints, only allow fields
+        if not is_collection:
+            if rspec.filters:
+                raise exceptions.InvalidQueryParameter("this is not a collection")
+
+        return rspec

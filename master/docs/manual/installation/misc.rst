@@ -79,15 +79,69 @@ With a little modification, these scripts can be used on both Debian and RHEL-ba
 Launching worker as Windows service
 -----------------------------------
 
-You can find information about installation of Buildbot as Windows service in
-`RunningBuildbotOnWindows <http://trac.buildbot.net/wiki/RunningBuildbotOnWindows>`_.
-A recent version of Buildbot worker has simplified the configuration for a Windows service.
+.. admonition:: Security consideration
+
+  Setting up the buildbot worker as a Windows service requires Windows administrator rights.
+  It is important to distinguish installation stage from service execution. It is strongly recommended run Buildbot worker
+  with lowest required access rights. It is recommended run a service under machine local non-privileged account.
+
+  If you decide run Buildbot worker under domain account it is recommended to create dedicated
+  strongly limited user account that will run Buildbot worker service.
+
+
+Windows service setup
+`````````````````````
+In this description, we assume that the buildbot worker account is the
+local domain account `worker`.
+
+In case worker should run under domain user account please replace ``.\worker`` with ``<domain>\worker``.
+Please replace ``<worker.passwd>`` with given user password.
+Please replace ``<worker.basedir>`` with the full/absolute directory
+specification to the created worker (what is called ``BASEDIR`` in :ref:`Creating-a-worker`).
 
 .. code-block:: bat
 
-    buildbot_worker_windows_service.exe --user YOURDOMAIN\theusername --password thepassword --startup auto install
+  buildbot_worker_windows_service --user .\worker --password <worker.passwd> --startup auto install
+  powershell -command "& {&'New-Item' -path Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\services\BuildBot\Parameters}"
+  powershell -command "& {&'set-ItemProperty' -path Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\services\BuildBot\Parameters -Name directories -Value '<worker.basedir>'}"
 
-The above command automatically adds user rights to run Buildbot as service.
+The first command automatically adds user rights to run Buildbot as service.
+
+Modify environment variables
+````````````````````````````
+This step is optional and may depend on your needs.
+At least we have found useful to have dedicated temp folder worker steps.
+It is much easier discover what temporary files your builds leaks/misbehaves.
+
+1. As Administrator run ``regedit``
+2. Open the key ``Computer\HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\Buildbot``.
+3. Create a new value of type ``REG_MULTI_SZ`` called ``Environment``.
+4. Add entries like
+
+::
+
+  TMP=c:\bbw\tmp
+  TEMP=c:\bbw\tmp
+
+
+Check if Buildbot can start correctly configured as Windows service
+```````````````````````````````````````````````````````````````````
+As admin user run the command ``net start buildbot``.
+In case everything goes well, you should see following output
+
+::
+
+  The BuildBot service is starting.
+  The BuildBot service was started successfully.
+
+
+Troubleshooting
+```````````````
+If anything goes wrong check
+
+- Twisted log on ``C:\bbw\worker\twistd.log``
+- Windows system event log (``eventvwr.msc`` in command line, ``Show-EventLog`` in PowerShell).
+
 
 .. _Logfiles:
 

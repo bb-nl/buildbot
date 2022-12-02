@@ -162,7 +162,14 @@ class LogFileWatcher(object):
             if self.follow:
                 self.f.seek(s[2], 0)
             self.started = True
+
+        # Mac OS X and Linux differ in behaviour when reading from a file that has previously
+        # reached EOF. On Linux, any new data that has been appended to the file will be returned.
+        # On Mac OS X, the empty string will always be returned. Seeking to the current position
+        # in the file resets the EOF flag on Mac OS X and will allow future reads to work as
+        # intended.
         self.f.seek(self.f.tell(), 0)
+
         while True:
             data = self.f.read(10000)
             if not data:
@@ -692,7 +699,6 @@ class RunProcess(object):
         """
         Send all the content in our buffers.
         """
-        msg = {}
         msg_size = 0
         lastlog = None
         logdata = []
@@ -711,12 +717,10 @@ class RunProcess(object):
             if lastlog is None:
                 lastlog = logname
             elif logname != lastlog:
-                self._sendMessage(msg)
-                msg = {}
+                self._sendMessage({lastlog: logdata})
                 msg_size = 0
-            lastlog = logname
-
-            logdata = msg.setdefault(logname, [])
+                lastlog = logname
+                logdata = []
 
             # Chunkify the log data to make sure we're not sending more than
             # CHUNK_LIMIT at a time
@@ -729,13 +733,12 @@ class RunProcess(object):
                     # We've gone beyond the chunk limit, so send out our
                     # message.  At worst this results in a message slightly
                     # larger than (2*CHUNK_LIMIT)-1
-                    self._sendMessage(msg)
-                    msg = {}
-                    logdata = msg.setdefault(logname, [])
+                    self._sendMessage({logname: logdata})
+                    logdata = []
                     msg_size = 0
         self.buflen = 0
         if logdata:
-            self._sendMessage(msg)
+            self._sendMessage({logname: logdata})
         if self.sendBuffersTimer:
             if self.sendBuffersTimer.active():
                 self.sendBuffersTimer.cancel()
@@ -895,18 +898,10 @@ class RunProcess(object):
                 log.msg("interruptSignal==None, only pretending to kill child")
             elif self.process.pid is not None:
                 if interruptSignal == "TERM":
-                    log.msg("using TASKKILL PID /T to kill pid {0}".format(
-                            self.process.pid))
-                    subprocess.check_call(
-                        "TASKKILL /PID {0} /T".format(self.process.pid))
-                    log.msg("taskkill'd pid {0}".format(self.process.pid))
+                    self._taskkill(self.process.pid, force=False)
                     hit = 1
                 elif interruptSignal == "KILL":
-                    log.msg("using TASKKILL PID /F /T to kill pid {0}".format(
-                            self.process.pid))
-                    subprocess.check_call(
-                        "TASKKILL /F /PID {0} /T".format(self.process.pid))
-                    log.msg("taskkill'd pid {0}".format(self.process.pid))
+                    self._taskkill(self.process.pid, force=True)
                     hit = 1
 
         # try signalling the process itself (works on Windows too, sorta)
@@ -926,6 +921,26 @@ class RunProcess(object):
                 # been called already or will be called shortly
 
         return hit
+
+    def _taskkill(self, pid, force):
+        try:
+            if force:
+                cmd = "TASKKILL /F /PID {0} /T".format(pid)
+            else:
+                cmd = "TASKKILL /PID {0} /T".format(pid)
+
+            log.msg("using {0} to kill pid {1}".format(cmd, pid))
+            subprocess.check_call(cmd)
+            log.msg("taskkill'd pid {0}".format(pid))
+
+        except subprocess.CalledProcessError as e:
+            # taskkill may return 128 as exit code when the child has already exited. We can't
+            # handle this race condition in any other way than just interpreting the kill action
+            # as successful
+            if e.returncode == 128:
+                log.msg("taskkill didn't find pid {0} to kill".format(pid))
+            else:
+                log.msg("taskkill failed to kill process {0}: {1}".format(pid, e))
 
     def kill(self, msg):
         # This may be called by the timeout, or when the user has decided to

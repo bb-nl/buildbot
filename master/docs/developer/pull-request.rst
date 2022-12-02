@@ -29,7 +29,7 @@ Guidelines
   If you have trouble with tests that fail without any of your changes applied, get in touch with the developers for help.
 
 * Pull requests that add features or change existing behavior should include a brief description in the release notes.
-  See the master/buildbot/newsfragments directory and read the `README.txt <https://github.com/buildbot/buildbot/blob/master/master/buildbot/newsfragments/README.txt>`_ file therein.
+  See the `newsfragments` directory and read the `README.txt <https://github.com/buildbot/buildbot/blob/master/newsfragments/README.txt>`_ file therein.
 
 * Git commit messages form the "ChangeLog" for Buildbot, and as such should be as descriptive as possible.
 
@@ -132,7 +132,7 @@ Before each of the commands detailed below, a virtualenv must be setup as descri
     make virtualenv
     . .venv/bin/activate
 
-If you see weird test results after changing branches of the repository, remove the `.venv` directory and repeat above again.
+If you see weird test results after changing branches of the repository, remove the `.venv` directory and repeat the above again.
 Note that `pip install -r <file>.txt` only needs to be run once at the beginning of your testing session.
 
 Master unit tests
@@ -172,7 +172,7 @@ To run locally, execute the following:
     make pylint
     make flake8
 
-If you see spell check errors, but your words are perfectly correct, then you may need to add these words to a whitelist at common/code_spelling_ignore_words.txt.
+If you see spell check errors, but your words are perfectly correct, then you may need to add these words to a whitelist at `common/code_spelling_ignore_words.txt`.
 
 isort
 ~~~~~
@@ -199,7 +199,7 @@ To run locally, execute the following:
     pip install -r requirements-cidocs.txt
     make docs
 
-If you see spell check errors, but your words are perfectly correct, then you may need to add these words to a whitelist at master/docs/spelling_wordlist.txt.
+If you see spell check errors, but your words are perfectly correct, then you may need to add these words to a whitelist at `master/docs/spelling_wordlist.txt`.
 
 End-to-end tests
 ~~~~~~~~~~~~~~~~

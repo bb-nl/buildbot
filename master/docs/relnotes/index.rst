@@ -1,14 +1,202 @@
 Release Notes
 ~~~~~~~~~~~~~
 ..
-    Don't write to this file anymore!!
+    Buildbot uses towncrier to manage its release notes.
+    towncrier helps to avoid the need for rebase when several people work at the same time on the release notes files.
 
-    Buildbot now uses towncrier to manage its release notes.
-    towncrier helps to avoid the need for rebase when several people work at the same time on the releasenote files.
-
-    Each PR should come with a file in the master/buildbot/newsfragment directory
+    Each PR should come with a file in the newsfragment directory
 
 .. towncrier release notes start
+
+Buildbot ``3.5.0`` ( ``2022-03-06`` )
+=====================================
+
+Bug fixes
+---------
+
+- Improved handling of "The container operating system does not match the host operating system" error on Docker on Windows to mark the build as erroneous so that it's not retried.
+- Fixed rare ``AlreadyCalledError`` exceptions in the logs when worker worker connection is lost at the same time it is delivering final outcome of a command.
+- Fixed errors when accessing non-existing build via REST API when an endpoint matching rule with builder filter was present.
+- Fixed an error in ``CMake`` passing options and definitions on the cmake command line.
+- Fixed an error when handling command management errors on the worker side (regression since v3.0.0).
+- Fixed updating build step summary with mock state changes for MockBuildSRPM and MockRebuild.
+- Fixed support for optional ``builder`` parameter used in RebuildBuildEndpointMatcher (:issue:`6307`).
+- Fixed error that caused builds to become stuck in building state until next master restart if builds that were in the process of being interrupted lost connection to the worker.
+- Fixed Gerrit change sources to emit changes with proper branch name instead of one containing ``refs/heads/`` as the prefix.
+- Fixed handling of ``build_wait_timeout`` on latent workers which previously could result in latent worker being shut down while a build is running in certain scenarios (:issue:`5988`).
+- Fixed problem on MySQL when using master names or builder tags that differ only by case.
+- Fixed timed schedulers not scheduling builds the first time they are enabled with ``onlyIfChanged=True`` when there are no important changes.
+  In such case the state of the code is not known, so a build must be run to establish the baseline.
+- Switched Bitbucket OAuth client from the deprecated 'teams' APIs to the new 'workspaces' APIs
+- Fixed errors when killing a process on a worker fails due to any reason (e.g. permission error or process being already exited) (:issue:`6140`).
+- Fixed updates to page title in the web UI.
+  Web UI now shows the configured buildbot title within the page title.
+
+Improved Documentation
+----------------------
+
+- Fixed brackets in section `2.4.2.4 - How to populate secrets in a build` (:issue:`6417`).
+
+Features
+--------
+
+- The use of Renderables when constructing payload For `JSONStringDownload` is now allowed.
+- Added ``alwaysPull`` support when using ``dockerfile`` parameter of ``DockerLatentWorker``.
+- Base Debian image has been upgraded to Debian Bullseye for the Buildbot master.
+- Added rendering support to ``docker_host`` and ``hostconfig`` parameters of ``DockerLatentWorker``.
+- ``MailNotifier`` reporter now sends HTML messages by default.
+- ``MessageFormatter`` will now use a default subject value if one is not specified.
+- The default templates used in message formatters have been improved to supply more information.
+  Separate default templates for html messages have been provided.
+- Added ``buildbot_title``, ``result_names`` and ``is_buildset`` keys to the data passed to ``MessageFormatter`` instances for message rendering.
+- Added ``target`` support when using ``dockerfile`` parameter of ``DockerLatentWorker``.
+- Simplified :bb:cfg:`prioritizeBuilders` default function to make an example easier to customize.
+- Buildbot now exposes its internal framework for writing tests of custom build steps.
+  Currently the API is experimental and subject to change.
+- Implemented detection of too long step and builder property names to produce errors at config time if possible.
+
+Deprecations and Removals
+-------------------------
+
+- Deprecated ``subject`` argument of ``BuildStatusGenerator`` and ``BuildSetStatusGenerator`` status generators.
+  Use ``subject`` argument of corresponding message formatters.
+
+
+Buildbot ``3.4.1`` ( ``2022-02-09`` )
+=====================================
+
+Bug fixes
+---------
+
+- Updated Bitbucket API URL for ``BitbucketPullrequestPoller``.
+- Fixed a crash in ``BitbucketPullrequestPoller`` (:issue:`4153`)
+- Fixed installation of master and worker as Windows service from wheel package (regression since 3.4.0)  (:issue:`6294`)
+- Fixed occasional exceptions when using Visual Studio steps (:issue:`5698`).
+- Fixed rare "Did you maybe forget to yield the method" errors coming from the log subsystem.
+
+
+Buildbot ``3.4.0`` ( ``2021-10-15`` )
+=====================================
+
+Bug fixes
+---------
+
+- Database migrations are now handled using Alembic (1.6.0 or newer is required) (:issue:`5872`).
+- AMI for latent worker is now set before making spot request to enable dynamically setting AMIs for instantiating workers.
+- Fixed ``GitPoller`` fetch commands timing out on huge repositories
+- Fixed a bug that caused Gerrit review comments sometimes not to be reported.
+- Fixed a critical bug in the ``MsBuild141`` step (regression since Buildbot v2.8.0) (:issue:`6262`).
+- Implemented renderable support in secrets list of ``RemoveWorkerFileSecret``.
+- Fixed issues that prevented Buildbot from being used in Setuptools 58 and newer due to dependencies failing to build (:issue:`6222`).
+
+Improved Documentation
+----------------------
+
+- Fixed help text for ``buildbot create-master`` so it states that ``--db`` option is passed verbatim to ``master.cfg.sample`` instead of ``buildbot.tac``.
+- Added documentation of properties available in the formatting context that is presented to message formatters.
+
+Features
+--------
+
+- MsBuild steps now handle correctly rebuilding or cleaning a specific project.
+  Previously it could only be done on the entire solution.
+- Implemented support for controlling ``filter`` option of ``git clone``.
+- Optimized build property filtering in the database instead of in Python code.
+- Implemented support of ``SASL PLAIN`` authentication to ``IRC`` reporter.
+- The ``want_logs`` (previously ``wantLogs``) argument to message formatters will now imply ``wantSteps`` if selected.
+- Added information about log URLs to message formatter context.
+- Implemented a way to ask for only logs metadata (excluding content) in message formatters via ``want_logs`` and ``want_logs_content`` arguments.
+- Implemented support for specifying pre-processor defines sent to the compiler in the ``MsBuild`` steps.
+- Introduced ``HvacKvSecretProvider`` to allow working around flaws in ``HashiCorpVaultSecretProvider`` (:issue:`5903`).
+- Implemented support for proxying worker connection through a HTTP proxy.
+
+Deprecations and Removals
+-------------------------
+
+- The ``wantLogs`` argument of message formatters has been deprecated.
+  Please replace any uses with both ``want_logs`` and ``want_logs_content`` set to the same value.
+- The ``wantProperties`` and ``wantSteps`` arguments of message formatters have been renamed to ``want_properties`` and ``want_steps`` respectively.
+- Buildbot now requires SQLAlchemy 1.3.0 or newer.
+
+
+Buildbot ``3.3.0`` ( ``2021-07-31`` )
+=====================================
+
+Bug fixes
+---------
+
+- Fixed support of SQLAlchemy v1.4 (:issue:`5992`).
+- Improved default build request collapsing functionality to take into account properties set by the scheduler and not collapse build requests if they differ (:issue:`4686`).
+- Fixed a race condition that would result in attempts to complete unclaimed buildrequests (:issue:`3762`).
+- Fixed a race condition in default buildrequest collapse function which resulted in two concurrently submitted build requests potentially being able to cancel each other (:issue:`4642`).
+- The ``comment-added`` event on Gerrit now produces the same branch as other events such as ``patchset-created``.
+- ``GerritChangeSource`` and ``GerritEventLogPoller`` will now produce change events with ``branch`` attribute that corresponds to the actual git branch on the repository.
+- Fixed handling of ``GitPoller`` state to not grow without bounds and eventually exceed the database field size. (:issue:`6100`)
+- Old browser warning banner is no longer shown for browsers that could not be identified (:issue:`5237`).
+- Fixed worker lock handling that caused max lock count to be ignored (:issue:`6132`).
+
+Features
+--------
+
+- Buildbot can now be configured (via ``FailingBuildsetCanceller``) to cancel unfinished builds when a build in a buildset fails.
+- ``GitHubEventHandler`` can now configure authentication token via Secrets management for GitHub instances that do not allow anonymous access
+- Buildbot can now be configured (via ``OldBuildCanceller``) to cancel unfinished builds when branches on which they are running receive new commits.
+- Buildbot secret management can now be used to configure worker passwords.
+- Services can now be forced to reload their code via new ``canReconfigWithSibling`` API.
+
+Deprecations and Removals
+-------------------------
+
+- ``changes.base.PollingChangeSource`` has been fully deprecated as internal uses of it were migrated to replacement APIs.
+
+
+Buildbot ``3.2.0`` ( ``2021-06-17`` )
+=====================================
+
+Bug fixes
+---------
+
+- Fixed occasional ``InvalidSpotInstanceRequestID.NotFound`` errors when using spot instances on EC2.
+  This could have lead to Buildbot launching zombie instances and not shutting them down.
+- Improved ``GitPoller`` behavior during reconfiguration to exit at earliest possible opportunity and thus reduce the delay that running ``GitPoller`` incurs for the reconfiguration.
+- The docker container for the master now fully builds the www packages.
+  Previously they were downloaded from pypi which resulted in downloading whatever version was newest at the time (:issue:`4998`).
+- Implemented time out for master-side utility processes (e.g. ``git`` or ``hg``) which could break the respective version control poller potentially indefinitely upon hanging.
+- Fixed a regression in the ``reconfig`` script which would time out instead of printing error when configuration update was not successfully applied.
+- Improved buildbot restart behavior to restore the worker paused state (:issue:`6074`)
+- Fixed support for binary patch files in try client (:issue:`5933`)
+- Improved handling of unsubscription errors in WAMP which will no longer crash the unsubscribing component and instead just log an error.
+- Fixed a crash when a worker is disconnected from a running build that uses worker information for some of its properties (:issue:`5745`).
+
+Improved Documentation
+----------------------
+
+- Added documentation about installation Buildbot worker as Windows service.
+
+Features
+--------
+
+- ``DebPbuilder`` now supports the ``--othermirror`` flag for including additional repositories
+- Implemented support for setting docker container's hostname
+- The libvirt latent worker will now wait for the VM to come online instead of disabling the worker during connection establishment process.
+  The VM management connections are now pooled by URI.
+- Buildbot now sends metadata required to establish connection back to master to libvirt worker VMs.
+- ``LibVirtWorker`` will now setup libvirt metadata with details needed by the worker to connect back to master.
+- The docker container for the master has been switched to Debian.
+  Additionally, buildbot is installed into a virtualenv there to reduce chances of conflicts with Python packages installed via ``dpkg``.
+- BitbucketStatusPush now has renderable build status key, name, and description.
+- Pausing a worker is a manual operation which the quarantine timer was overwriting. Worker paused state and quarantine state are now independent. (:issue:`5611`)
+- Reduce buildbot_worker wheel package size by 40% by dropping tests from package.
+
+Deprecations and Removals
+-------------------------
+
+- The `connection` argument of the LibVirtWorker constructor has been deprecated along with the related `Connection` class.
+  Use `uri` as replacement.
+- The ``*NewStyle`` build step aliases have been removed.
+  Please use equivalent steps without the ``NewStyle`` suffix in the name.
+- Try client no longer supports protocol used by Buildbot older than v0.9.
+
 
 Buildbot ``3.1.1`` ( ``2021-04-28`` )
 =====================================

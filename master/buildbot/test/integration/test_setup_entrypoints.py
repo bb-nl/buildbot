@@ -101,6 +101,10 @@ class TestSetupPyEntryPoints(unittest.TestCase):
 
         known_not_exported = {
             'buildbot.util._notifier.Notifier',
+            'buildbot.util.backoff.ExponentialBackoffEngineAsync',
+            'buildbot.util.backoff.ExponentialBackoffEngineSync',
+            'buildbot.util.backoff.BackoffTimeoutExceededError',
+            'buildbot.util.backoff.ExponentialBackoffEngine',
             'buildbot.util.bbcollections.KeyedSets',
             'buildbot.util.codebase.AbsoluteSourceStampsMixin',
             'buildbot.util.config.ConfiguredMixin',
@@ -131,8 +135,12 @@ class TestSetupPyEntryPoints(unittest.TestCase):
             'buildbot.util.protocol.LineBuffer',
             'buildbot.util.protocol.LineProcessProtocol',
             'buildbot.util.pullrequest.PullRequestMixin',
+            'buildbot.util.queue.ConnectableThreadQueue',
+            'buildbot.util.queue.UndoableQueue',
             'buildbot.util.raml.RamlLoader',
             'buildbot.util.raml.RamlSpec',
+            'buildbot.util.runprocess.RunProcessPP',
+            'buildbot.util.runprocess.RunProcess',
             'buildbot.util.sautils.InsertFromSelect',
             'buildbot.util.service.AsyncMultiService',
             'buildbot.util.service.AsyncService',
@@ -183,6 +191,7 @@ class TestSetupPyEntryPoints(unittest.TestCase):
             'buildbot.secrets.manager.SecretManager',
             'buildbot.secrets.providers.base.SecretProviderBase',
             'buildbot.secrets.secret.SecretDetails',
+            'buildbot.secrets.providers.vault_hvac.VaultAuthenticator',
         }
         self.verify_plugins_registered('secrets', 'buildbot.secrets', None, known_not_exported)
 
@@ -210,7 +219,7 @@ class TestSetupPyEntryPoints(unittest.TestCase):
         # Now verify that are no unregistered plugins left.
         existing_classes = self.get_existing_classes(module_name, interface)
 
-        exported_classes = {'{}.{}'.format(plugins._get_entry(name)._entry.module_name, name)
+        exported_classes = {f'{plugins._get_entry(name)._entry.module_name}.{name}'
                             for name in plugins.names}
         if known_not_exported is None:
             known_not_exported = set()
@@ -240,5 +249,5 @@ class TestSetupPyEntryPoints(unittest.TestCase):
                     if inspect.isclass(obj) and obj.__module__ == existing_module:
                         if interface is not None and not self.class_provides_iface(interface, obj):
                             continue
-                        existing_classes.add('{}.{}'.format(existing_module, name))
+                        existing_classes.add(f'{existing_module}.{name}')
         return existing_classes

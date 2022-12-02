@@ -28,7 +28,6 @@ from twisted.trial import unittest
 from buildbot.scripts import start
 from buildbot.test.util import dirs
 from buildbot.test.util import misc
-from buildbot.test.util.decorators import flaky
 from buildbot.test.util.decorators import skipUnlessPlatformIs
 
 
@@ -62,7 +61,7 @@ class TestStart(misc.StdoutAssertionsMixin, dirs.DirsMixin, unittest.TestCase):
 
     def setUp(self):
         self.setUpDirs('basedir')
-        with open(os.path.join('basedir', 'buildbot.tac'), 'wt') as f:
+        with open(os.path.join('basedir', 'buildbot.tac'), 'wt', encoding='utf-8') as f:
             f.write(fake_master_tac)
         self.setUpStdoutAssertions()
 
@@ -79,8 +78,7 @@ class TestStart(misc.StdoutAssertionsMixin, dirs.DirsMixin, unittest.TestCase):
         args = [
             '-c',
             'from buildbot.scripts.start import start; import sys; '
-            'sys.exit(start(%r))' % (
-                mkconfig(**config),),
+            f'sys.exit(start({repr(mkconfig(**config))}))',
         ]
         env = os.environ.copy()
         env['PYTHONPATH'] = os.pathsep.join(sys.path)
@@ -118,7 +116,6 @@ class TestStart(misc.StdoutAssertionsMixin, dirs.DirsMixin, unittest.TestCase):
 
         self.assertEqual(res, (mock.ANY, b'', 0))
 
-    @flaky(bugNumber=2760)
     @skipUnlessPlatformIs('posix')
     @defer.inlineCallbacks
     def test_start(self):
@@ -126,8 +123,7 @@ class TestStart(misc.StdoutAssertionsMixin, dirs.DirsMixin, unittest.TestCase):
             (out, err, rc) = yield self.runStart()
 
             self.assertEqual((rc, err), (0, b''))
-            self.assertSubstring(
-                'buildmaster appears to have (re)started correctly', out)
+            self.assertSubstring(b'buildmaster appears to have (re)started correctly', out)
         finally:
             # wait for the pidfile to go away after the reactor.stop
             # in buildbot.tac takes effect
