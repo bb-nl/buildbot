@@ -98,6 +98,7 @@ class Build(properties.PropertiesMixin):
         # overall results, may downgrade after each step
         self.results = SUCCESS
         self.properties = properties.Properties()
+        self.stopped_reason = None
 
         # tracks execution during the build finish phase
         self._locks_released = False
@@ -628,6 +629,7 @@ class Build(properties.PropertiesMixin):
     def controlStopBuild(self, key, params):
         return self.stopBuild(**params)
 
+    @defer.inlineCallbacks
     def stopBuild(self, reason="<no reason given>", results=CANCELLED):
         # the idea here is to let the user cancel a build because, e.g.,
         # they realized they committed a bug and they don't want to waste
@@ -639,10 +641,10 @@ class Build(properties.PropertiesMixin):
         log.msg(f" {self}: stopping build: {reason} {results}")
         if self.finished:
             return
-        # TODO: include 'reason' in this point event
+        self.stopped_reason = reason
         self.stopped = True
         if self.currentStep and self.currentStep.results is None:
-            self.currentStep.interrupt(reason)
+            yield self.currentStep.interrupt(reason)
 
         self.results = results
 
@@ -667,6 +669,8 @@ class Build(properties.PropertiesMixin):
             text = ["cancelled"]
         else:
             text = ["build", "successful"]
+        if self.stopped_reason is not None:
+            text.extend([f'({self.stopped_reason})'])
         text.extend(self.text)
         return self.buildFinished(text, self.results)
 
