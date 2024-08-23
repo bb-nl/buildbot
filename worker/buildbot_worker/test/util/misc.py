@@ -20,8 +20,6 @@
 
 from __future__ import absolute_import
 from __future__ import print_function
-from future.utils import PY3
-from future.utils import string_types
 
 import errno
 import os
@@ -31,18 +29,18 @@ import sys
 from io import BytesIO
 from io import StringIO
 
-import mock
+from six import PY3
+from six import string_types
+from six.moves import builtins
 
 from twisted.python import log
 
 from buildbot_worker.scripts import base
 
 try:
-    # Python 2
-    import __builtin__ as builtins
+    from unittest import mock
 except ImportError:
-    # Python 3
-    import builtins
+    import mock
 
 
 def nl(s):

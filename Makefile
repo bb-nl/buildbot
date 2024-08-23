@@ -4,19 +4,27 @@ ROOT_DIR := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 .PHONY: docs pylint flake8 virtualenv
 
+ifeq ($(OS),Windows_NT)
+  VENV_BIN_DIR := Scripts
+  VENV_PY_VERSION ?= python
+  VENV_CREATE := python -m venv
+else
+  VENV_BIN_DIR := bin
+  VENV_PY_VERSION ?= python3
+  VENV_CREATE := virtualenv -p $(VENV_PY_VERSION)
+endif
 
 VENV_NAME := .venv$(VENV_PY_VERSION)
-PIP ?= $(ROOT_DIR)/$(VENV_NAME)/bin/pip
-PYTHON ?= $(ROOT_DIR)/$(VENV_NAME)/bin/python
-VENV_PY_VERSION ?= python3
+PIP ?= $(ROOT_DIR)/$(VENV_NAME)/$(VENV_BIN_DIR)/pip
+VENV_PYTHON ?= $(ROOT_DIR)/$(VENV_NAME)/$(VENV_BIN_DIR)/python
 YARN := $(shell which yarnpkg || which yarn)
 
-WWW_PKGS := www/base www/react-base www/console_view www/grid_view www/waterfall_view www/wsgi_dashboards www/badges
+WWW_PKGS := www/base www/react-base www/console_view www/react-console_view www/grid_view www/react-grid_view www/waterfall_view www/react-waterfall_view www/wsgi_dashboards www/react-wsgi_dashboards www/badges
 WWW_EX_PKGS := www/nestedexample www/codeparameter
-WWW_DEP_PKGS := www/guanlecoja-ui www/data_module
+WWW_DEP_PKGS := www/guanlecoja-ui www/data_module www/plugin_support www/react-data-module www/react-ui
 ALL_PKGS := master worker pkg $(WWW_PKGS)
 
-WWW_PKGS_FOR_UNIT_TESTS := $(filter-out www/badges, $(WWW_DEP_PKGS) $(WWW_PKGS))
+WWW_PKGS_FOR_UNIT_TESTS := $(filter-out www/badges www/plugin_support www/react-ui www/react-grid_view www/react-wsgi_dashboards, $(WWW_DEP_PKGS) $(WWW_PKGS))
 
 ALL_PKGS_TARGETS := $(addsuffix _pkg,$(ALL_PKGS))
 .PHONY: $(ALL_PKGS_TARGETS)
@@ -60,7 +68,7 @@ flake8:
 
 frontend_deps: $(VENV_NAME)
 	$(PIP) install -e pkg
-	$(PIP) install mock wheel buildbot
+	$(PIP) install wheel buildbot
 	cd www/build_common; $(YARN) install --pure-lockfile
 	for i in $(WWW_DEP_PKGS); \
 		do (cd $$i; $(YARN) install --pure-lockfile; $(YARN) run build); done
@@ -75,7 +83,7 @@ frontend_tests_headless: frontend_deps
 	for i in $(WWW_PKGS); \
 		do (cd $$i; $(YARN) install --pure-lockfile); done
 	for i in $(WWW_PKGS_FOR_UNIT_TESTS); \
-		do (cd $$i; $(YARN) run build-dev || exit 1; $(YARN) run test $$(if [ $$i != "www/react-base" ]; then echo --browsers BBChromeHeadless; fi) || exit 1) || exit 1; done
+		do (cd $$i; $(YARN) run build-dev || exit 1; $(YARN) run test $$(if [ $$i != "www/react-base" -a $$i != "www/react-data-module" -a $$i != "www/react-ui" -a $$i != "www/react-grid_view" -a $$i != "www/react-console_view" -a $$i != "www/react-waterfall_view" ]; then echo --browsers BBChromeHeadless; fi) || exit 1) || exit 1; done
 
 # rebuild front-end from source
 frontend: frontend_deps
@@ -84,7 +92,7 @@ frontend: frontend_deps
 # build frontend wheels for installation elsewhere
 frontend_wheels: frontend_deps
 	for i in pkg $(WWW_PKGS); \
-		do (cd $$i; $(PYTHON) setup.py bdist_wheel || exit 1) || exit 1; done
+		do (cd $$i; $(VENV_PYTHON) setup.py bdist_wheel || exit 1) || exit 1; done
 
 # do installation tests. Test front-end can build and install for all install methods
 frontend_install_tests: frontend_deps
@@ -115,21 +123,24 @@ docker-buildbot-master:
 	$(DOCKERBUILD) -t buildbot/buildbot-master:master master
 
 $(VENV_NAME):
-	virtualenv -p $(VENV_PY_VERSION) $(VENV_NAME)
-	$(PIP) install -U pip setuptools
+	$(VENV_CREATE) $(VENV_NAME)
+	$(VENV_PYTHON) -m pip install --upgrade pip
+	$(PIP) install -U setuptools wheel
 
 # helper for virtualenv creation
 virtualenv: $(VENV_NAME)   # usage: make virtualenv VENV_PY_VERSION=python3.4
-	$(PIP) install -r requirements-minimal.txt \
+	$(PIP) install -r requirements-ci.txt \
+		-r requirements-ciworker.txt \
+		-r requirements-cidocs.txt \
 		packaging towncrier
 	@echo now you can type following command  to activate your virtualenv
-	@echo . $(VENV_NAME)/bin/activate
+	@echo . $(VENV_NAME)/$(VENV_BIN_DIR)/activate
 
 TRIALOPTS?=buildbot
 
 .PHONY: trial
 trial: virtualenv
-	. $(VENV_NAME)/bin/activate && trial $(TRIALOPTS)
+	. $(VENV_NAME)/$(VENV_BIN_DIR)/activate && trial $(TRIALOPTS)
 
 release_notes: $(VENV_NAME)
 	test ! -z "$(VERSION)"  #  usage: make release_notes VERSION=0.9.2
@@ -137,7 +148,7 @@ release_notes: $(VENV_NAME)
 	git commit -m "Release notes for $(VERSION)"
 
 $(ALL_PKGS_TARGETS): cleanup_for_tarballs frontend_deps
-	. $(VENV_NAME)/bin/activate && ./common/maketarball.sh $(patsubst %_pkg,%,$@)
+	. $(VENV_NAME)/$(VENV_BIN_DIR)/activate && ./common/maketarball.sh $(patsubst %_pkg,%,$@)
 
 cleanup_for_tarballs:
 	find master pkg worker www -name VERSION -exec rm {} \;
@@ -153,11 +164,11 @@ release: virtualenv
 	test -d "../bbdocs/.git"  #  make release should be done with bbdocs populated at the same level as buildbot dir
 	GPG_TTY=`tty` git tag -a -sf v$(VERSION) -m "TAG $(VERSION)"
 	git push buildbot "v$(VERSION)"  # tarballs are made by circleci.yml, and create a github release
-	export VERSION=$(VERSION) ; . .venv/bin/activate && make docs-release
+	export VERSION=$(VERSION) ; . $(VENV_NAME)/$(VENV_BIN_DIR)/activate && make docs-release
 	rm -rf ../bbdocs/docs/$(VERSION)  # in case of re-run
 	cp -r master/docs/_build/html ../bbdocs/docs/$(VERSION)
 	cd ../bbdocs && git pull
-	. .venv/bin/activate && cd ../bbdocs && make && git add docs && git commit -m $(VERSION) && git push
+	. $(VENV_NAME)/$(VENV_BIN_DIR)/activate && cd ../bbdocs && make && git add docs && git commit -m $(VERSION) && git push
 	@echo When tarballs have been generated by circleci:
 	@echo make finishrelease
 
@@ -165,8 +176,8 @@ finishrelease:
 	rm -rf dist
 	python3 ./common/download_release.py
 	rm -rf ./dist/v*
-	twine upload --sign dist/*
+	twine upload dist/*
 
 pyinstaller: virtualenv
 	$(PIP) install pyinstaller
-	$(VENV_NAME)/bin/pyinstaller pyinstaller/buildbot-worker.spec
+	$(VENV_NAME)/$(VENV_BIN_DIR)/pyinstaller pyinstaller/buildbot-worker.spec

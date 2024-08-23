@@ -25,13 +25,14 @@ import time
 from twisted.application import service
 from twisted.internet import defer
 from twisted.internet import reactor
+from twisted.python import failure
 from twisted.python import log
 from twisted.spread import pb
 
 import buildbot_worker
-from buildbot_worker import monkeypatches
 from buildbot_worker.commands import base
 from buildbot_worker.commands import registry
+from buildbot_worker.compat import bytes2unicode
 from buildbot_worker.util import buffer_manager
 from buildbot_worker.util import lineboundaries
 
@@ -53,13 +54,15 @@ class ProtocolCommandBase:
         self.builder_is_running = builder_is_running
         self.on_command_complete = on_command_complete
         self.on_lost_remote_step = on_lost_remote_step
+        self.command_id = command_id
 
         self.protocol_args_setup(command, args)
 
         try:
             factory = registry.getFactory(command)
         except KeyError:
-            raise UnknownCommand(u"unrecognized WorkerCommand '{0}'".format(command))
+            raise UnknownCommand(u"(command {0}): unrecognized WorkerCommand '{1}'".format(
+                command_id, command))
 
         # .command points to a WorkerCommand instance, and is set while the step is running.
         self.command = factory(self, command_id, args)
@@ -68,6 +71,9 @@ class ProtocolCommandBase:
                                                    self.buffer_size, self.buffer_timeout)
 
         self.is_complete = False
+
+    def log_msg(self, msg):
+        log.msg(u"(command {0}): {1}".format(self.command_id, msg))
 
     def split_lines(self, stream, text, text_time):
         try:
@@ -116,13 +122,13 @@ class ProtocolCommandBase:
                     self.buffer.append(key, value)
 
     def _ack_failed(self, why, where):
-        log.msg("ProtocolCommandBase._ack_failed:", where)
+        self.log_msg("ProtocolCommandBase._ack_failed: {0}".format(where))
         log.err(why)  # we don't really care
 
     # this is fired by the Deferred attached to each Command
     def command_complete(self, failure):
         if failure:
-            log.msg("ProtocolCommandBase.command_complete (failure)", self.command)
+            self.log_msg("ProtocolCommandBase.command_complete (failure) {0}".format(self.command))
             log.err(failure)
             # failure, if present, is a failure.Failure. To send it across
             # the wire, we must turn it into a pb.CopyableFailure.
@@ -130,11 +136,11 @@ class ProtocolCommandBase:
             failure.unsafeTracebacks = True
         else:
             # failure is None
-            log.msg("ProtocolCommandBase.command_complete (success)", self.command)
+            self.log_msg("ProtocolCommandBase.command_complete (success) {0}".format(self.command))
 
         self.on_command_complete()
         if not self.builder_is_running:
-            log.msg(" but we weren't running, quitting silently")
+            self.log_msg(" but we weren't running, quitting silently")
             return
         if not self.is_complete:
             d = self.protocol_complete(failure)
@@ -219,7 +225,11 @@ class BotBase(service.MultiService):
                 filename = os.path.join(basedir, f)
                 if os.path.isfile(filename):
                     with open(filename, "r") as fin:
-                        files[f] = fin.read()
+                        try:
+                            files[f] = bytes2unicode(fin.read())
+                        except UnicodeDecodeError:
+                            log.err(failure.Failure(),
+                                    'error while reading file: %s' % (filename))
 
         self._read_os_release(self.os_release_file, files)
 
@@ -270,9 +280,6 @@ class WorkerBase(service.MultiService):
         self.basedir = basedir
 
     def startService(self):
-        # first, apply all monkeypatches
-        monkeypatches.patch_all()
-
         log.msg("Starting Worker -- version: {0}".format(buildbot_worker.version))
 
         if self.umask is not None:

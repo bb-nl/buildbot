@@ -71,12 +71,29 @@ class Git(Source, GitStepMixin):
     renderables = ["repourl", "reference", "branch",
                    "codebase", "mode", "method", "origin"]
 
-    def __init__(self, repourl=None, branch='HEAD', mode='incremental', method=None,
-                 reference=None, submodules=False, remoteSubmodules=False, shallow=False,
-                 filters=None, progress=True, retryFetch=False, clobberOnFailure=False,
-                 getDescription=False, config=None, origin=None, sshPrivateKey=None,
-                 sshHostKey=None, sshKnownHosts=None, **kwargs):
-
+    def __init__(
+        self,
+        repourl=None,
+        branch='HEAD',
+        mode='incremental',
+        method=None,
+        reference=None,
+        submodules=False,
+        remoteSubmodules=False,
+        tags=False,
+        shallow=False,
+        filters=None,
+        progress=True,
+        retryFetch=False,
+        clobberOnFailure=False,
+        getDescription=False,
+        config=None,
+        origin=None,
+        sshPrivateKey=None,
+        sshHostKey=None,
+        sshKnownHosts=None,
+        **kwargs
+    ):
         if not getDescription and not isinstance(getDescription, dict):
             getDescription = False
 
@@ -87,6 +104,7 @@ class Git(Source, GitStepMixin):
         self.retryFetch = retryFetch
         self.submodules = submodules
         self.remoteSubmodules = remoteSubmodules
+        self.tags = tags
         self.shallow = shallow
         self.filters = filters
         self.clobberOnFailure = clobberOnFailure
@@ -114,7 +132,7 @@ class Git(Source, GitStepMixin):
                     bbconfig.error("Git: invalid method for mode 'full'.")
                 if self.shallow and (self.mode != 'full' or self.method != 'clobber'):
                     bbconfig.error(
-                        "Git: shallow only possible with mode 'full' and method 'clobber'.")
+                        "Git: in mode 'full' shallow only possible with method 'clobber'.")
         if not isinstance(self.getDescription, (bool, dict)):
             bbconfig.error("Git: getDescription must be a boolean or a dict.")
 
@@ -143,11 +161,9 @@ class Git(Source, GitStepMixin):
                 yield self.patch(patch)
             yield self.parseGotRevision()
             res = yield self.parseCommitDescription()
-            yield self._removeSshPrivateKeyIfNeeded()
             return res
-        except Exception:
+        finally:
             yield self._removeSshPrivateKeyIfNeeded()
-            raise
 
     @defer.inlineCallbacks
     def mode_full(self):
@@ -308,8 +324,9 @@ class Git(Source, GitStepMixin):
     def _fetch(self, _, abandonOnFailure=True):
         fetch_required = True
 
-        # If the revision already exists in the repo, we don't need to fetch.
-        if self.revision:
+        # If the revision already exists in the repo, we don't need to fetch. However, if tags
+        # were requested, then fetch still needs to be performed for the tags.
+        if not self.tags and self.revision:
             rc = yield self._dovccmd(['cat-file', '-e', self.revision],
                                      abandonOnFailure=False)
             if rc == RC_SUCCESS:
@@ -317,6 +334,9 @@ class Git(Source, GitStepMixin):
 
         if fetch_required:
             command = ['fetch', '-f', '-t', self.repourl, self.branch]
+            if self.tags:
+                command.append("--tags")
+
             # If the 'progress' option is set, tell git fetch to output
             # progress information to the log. This can solve issues with
             # long fetches killed due to lack of output, but only works
@@ -399,7 +419,7 @@ class Git(Source, GitStepMixin):
             else:
                 log.msg("Git versions < 1.7.2 don't support progress")
         if self.retry:
-            abandonOnFailure = (self.retry[1] <= 0)
+            abandonOnFailure = self.retry[1] <= 0
         else:
             abandonOnFailure = True
         # If it's a shallow clone abort build step
@@ -442,6 +462,8 @@ class Git(Source, GitStepMixin):
             cmdArgs = ["submodule", "update", "--init", "--recursive"]
             if self.remoteSubmodules:
                 cmdArgs.append("--remote")
+            if shallowClone:
+                cmdArgs.extend(["--depth", str(int(shallowClone))])
             res = yield self._dovccmd(cmdArgs, shallowClone)
 
         return res

@@ -36,7 +36,17 @@ class Db2DataMixin:
         if not bsdict:
             return None
 
-        buildset = bsdict.copy()
+        buildset = {
+            "bsid": bsdict["bsid"],
+            "external_idstring": bsdict["external_idstring"],
+            "reason": bsdict["reason"],
+            "submitted_at": datetime2epoch(bsdict["submitted_at"]),
+            "complete": bsdict["complete"],
+            "complete_at": datetime2epoch(bsdict["complete_at"]),
+            "results": bsdict["results"],
+            "parent_buildid": bsdict["parent_buildid"],
+            "parent_relationship": bsdict["parent_relationship"],
+        }
 
         # gather the actual sourcestamps, in parallel
         sourcestamps = []
@@ -46,14 +56,10 @@ class Db2DataMixin:
             ss = yield self.master.data.get(('sourcestamps', str(ssid)))
             sourcestamps.append(ss)
         yield defer.DeferredList([getSs(id)
-                                  for id in buildset['sourcestamps']],
+                                  for id in bsdict['sourcestamps']],
                                  fireOnOneErrback=True, consumeErrors=True)
+
         buildset['sourcestamps'] = sourcestamps
-
-        # minor modifications
-        buildset['submitted_at'] = datetime2epoch(buildset['submitted_at'])
-        buildset['complete_at'] = datetime2epoch(buildset['complete_at'])
-
         return buildset
 
     fieldMapping = {
@@ -71,7 +77,7 @@ class Db2DataMixin:
 
 class BuildsetEndpoint(Db2DataMixin, base.Endpoint):
 
-    isCollection = False
+    kind = base.EndpointKind.SINGLE
     pathPatterns = """
         /buildsets/n:bsid
     """
@@ -85,28 +91,27 @@ class BuildsetEndpoint(Db2DataMixin, base.Endpoint):
 
 class BuildsetsEndpoint(Db2DataMixin, base.Endpoint):
 
-    isCollection = True
+    kind = base.EndpointKind.COLLECTION
     pathPatterns = """
         /buildsets
     """
     rootLinkName = 'buildsets'
 
+    @defer.inlineCallbacks
     def get(self, resultSpec, kwargs):
         complete = resultSpec.popBooleanFilter('complete')
         resultSpec.fieldMapping = self.fieldMapping
-        d = self.master.db.buildsets.getBuildsets(
-            complete=complete, resultSpec=resultSpec)
+        buildsets = yield self.master.db.buildsets.getBuildsets(
+            complete=complete,
+            resultSpec=resultSpec
+        )
 
-        @d.addCallback
-        def db2data(buildsets):
-            d = defer.DeferredList([self.db2data(bs) for bs in buildsets],
-                                   fireOnOneErrback=True, consumeErrors=True)
+        buildsets = yield defer.gatherResults(
+            [self.db2data(bs) for bs in buildsets],
+            consumeErrors=True
+        )
 
-            @d.addCallback
-            def getResults(res):
-                return [r[1] for r in res]
-            return d
-        return d
+        return buildsets
 
 
 class Buildset(base.ResourceType):
@@ -138,7 +143,7 @@ class Buildset(base.ResourceType):
     @defer.inlineCallbacks
     def addBuildset(self, waited_for, scheduler=None, sourcestamps=None, reason='',
                     properties=None, builderids=None, external_idstring=None,
-                    parent_buildid=None, parent_relationship=None):
+                    parent_buildid=None, parent_relationship=None, priority=0):
         if sourcestamps is None:
             sourcestamps = []
         if properties is None:
@@ -151,7 +156,8 @@ class Buildset(base.ResourceType):
             properties=properties, builderids=builderids,
             waited_for=waited_for, external_idstring=external_idstring,
             submitted_at=epoch2datetime(submitted_at),
-            parent_buildid=parent_buildid, parent_relationship=parent_relationship)
+            parent_buildid=parent_buildid, parent_relationship=parent_relationship,
+            priority=priority)
 
         yield BuildRequestCollapser(self.master, list(brids.values())).collapse()
 
@@ -168,16 +174,18 @@ class Buildset(base.ResourceType):
         brResource.generateEvent(list(brids.values()), 'new')
 
         # and the buildset itself
-        msg = dict(
-            bsid=bsid,
-            external_idstring=external_idstring,
-            reason=reason,
-            submitted_at=submitted_at,
-            complete=False,
-            complete_at=None,
-            results=None,
-            scheduler=scheduler,
-            sourcestamps=sourcestamps)
+        msg = {
+            "bsid": bsid,
+            "external_idstring": external_idstring,
+            "reason": reason,
+            "parent_buildid": parent_buildid,
+            "submitted_at": submitted_at,
+            "complete": False,
+            "complete_at": None,
+            "results": None,
+            "scheduler": scheduler,
+            "sourcestamps": sourcestamps
+        }
         # TODO: properties=properties)
         self.produceEvent(msg, "new")
 
@@ -238,14 +246,17 @@ class Buildset(base.ResourceType):
                 )
             )
 
-        msg = dict(
-            bsid=bsid,
-            external_idstring=bsdict['external_idstring'],
-            reason=bsdict['reason'],
-            sourcestamps=sourcestamps,
-            submitted_at=bsdict['submitted_at'],
-            complete=True,
-            complete_at=complete_at,
-            results=cumulative_results)
+        msg = {
+            "bsid": bsid,
+            "external_idstring": bsdict['external_idstring'],
+            "reason": bsdict['reason'],
+            "sourcestamps": sourcestamps,
+            "submitted_at": bsdict['submitted_at'],
+            "complete": True,
+            "complete_at": complete_at,
+            "results": cumulative_results,
+            "parent_buildid": bsdict["parent_buildid"],
+            "parent_relationship": bsdict["parent_relationship"],
+        }
         # TODO: properties=properties)
         self.produceEvent(msg, "complete")

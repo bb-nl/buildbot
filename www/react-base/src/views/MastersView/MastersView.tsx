@@ -15,24 +15,18 @@
   Copyright Buildbot Team Members
 */
 
+import {Fragment} from "react";
 import {observer} from "mobx-react";
 import {Table} from "react-bootstrap";
-import {useDataAccessor, useDataApiQuery} from "../../data/ReactUtils";
-import {globalMenuSettings} from "../../plugins/GlobalMenuSettings";
-import {globalRoutes} from "../../plugins/GlobalRoutes";
-import {Worker} from "../../data/classes/Worker";
-import {Master} from "../../data/classes/Master";
+import {FaCheck, FaTimes} from "react-icons/fa";
+import {buildbotSetupPlugin} from "buildbot-plugin-support";
+import {Build, Builder, Master, Worker, useDataAccessor, useDataApiQuery} from "buildbot-data-js";
 import {computed} from "mobx";
-import {Build} from "../../data/classes/Build";
 import {Link} from "react-router-dom";
-import {durationFromNowFormat, useCurrentTime} from "../../util/Moment";
-import BuildLinkWithSummaryTooltip
-  from "../../components/BuildLinkWithSummaryTooltip/BuildLinkWithSummaryTooltip";
-import {Builder} from "../../data/classes/Builder";
-import BadgeRound from "../../components/BadgeRound/BadgeRound";
+import {BadgeRound, BuildLinkWithSummaryTooltip, durationFromNowFormat, useCurrentTime} from "buildbot-ui";
+import {LoadingSpan} from "../../components/LoadingSpan/LoadingSpan";
 
-
-const MastersView = observer(() => {
+export const MastersView = observer(() => {
   const now = useCurrentTime();
   const accessor = useDataAccessor([]);
 
@@ -65,7 +59,7 @@ const MastersView = observer(() => {
       return <></>;
     }
     return masterIdToConnectedWorkers[master.id].map(worker => (
-      <span>
+      <span key={worker.id}>
         <Link to={`/workers/${worker.id}`}>
           <BadgeRound className="results_SUCCESS">
             {worker.name}
@@ -78,16 +72,19 @@ const MastersView = observer(() => {
   const renderBuild = (build: Build) => {
     const builder = buildersQuery.getByIdOrNull(build.builderid.toString());
     if (builder === null) {
-      return <></>;
+      return <Fragment key={build.id}/>;
     }
-    return <BuildLinkWithSummaryTooltip build={build} builder={builder}/>
+    return <BuildLinkWithSummaryTooltip key={build.id} build={build} builder={builder}/>
   };
 
   const renderMaster = (master: Master) => {
     return (
       <tr key={master.id}>
         <td>
-          <i className={"fa " + (master.active ? "fa-check text-success" : "fa-times text-danger")}/>
+          {master.active
+           ? <FaCheck className="text-success"/>
+           : <FaTimes className="text-danger"/>
+          }
         </td>
         <td>{master.name}</td>
         <td>
@@ -96,13 +93,13 @@ const MastersView = observer(() => {
               .filter(build => build.masterid === master.masterid)
               .slice(0, 20)
               .map(build => renderBuild(build))
-            : <span>Loading...</span>
+            : <LoadingSpan/>
           }
         </td>
         <td>
           {workersQuery.resolved
             ? renderWorkersForMaster(master)
-            : <span>Loading...</span>
+            : <LoadingSpan/>
           }
         </td>
         <td>
@@ -132,19 +129,18 @@ const MastersView = observer(() => {
   );
 });
 
-globalMenuSettings.addGroup({
-  name: 'masters',
-  parentName: 'builds',
-  caption: 'Build Masters',
-  icon: null,
-  order: null,
-  route: '/masters',
-});
+buildbotSetupPlugin((reg) => {
+  reg.registerMenuGroup({
+    name: 'masters',
+    parentName: 'builds',
+    caption: 'Build Masters',
+    order: null,
+    route: '/masters',
+  });
 
-globalRoutes.addRoute({
-  route: "masters",
-  group: "builds",
-  element: () => <MastersView/>,
+  reg.registerRoute({
+    route: "masters",
+    group: "builds",
+    element: () => <MastersView/>,
+  });
 });
-
-export default MastersView;

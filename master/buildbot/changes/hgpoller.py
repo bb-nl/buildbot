@@ -25,6 +25,7 @@ from buildbot.util import bytes2unicode
 from buildbot.util import deferredLocked
 from buildbot.util import runprocess
 from buildbot.util.state import StateMixin
+from buildbot.warnings import warn_deprecated
 
 
 class HgPoller(base.ReconfigurablePollingChangeSource, StateMixin):
@@ -57,6 +58,7 @@ class HgPoller(base.ReconfigurablePollingChangeSource, StateMixin):
         # for backward compatibility; the parameter used to be spelled with 'i'
         if pollinterval != -2:
             pollInterval = pollinterval
+            warn_deprecated('3.11.3', 'pollinterval has been deprecated: please use pollInterval')
 
         if branch and branches:
             config.error("HgPoller: can't specify both branch and branches")
@@ -83,6 +85,7 @@ class HgPoller(base.ReconfigurablePollingChangeSource, StateMixin):
         # for backward compatibility; the parameter used to be spelled with 'i'
         if pollinterval != -2:
             pollInterval = pollinterval
+            warn_deprecated('3.11.3', 'pollinterval has been deprecated: please use pollInterval')
 
         self.repourl = repourl
 
@@ -171,7 +174,7 @@ class HgPoller(base.ReconfigurablePollingChangeSource, StateMixin):
                                                   stderr_is_error=True)
         if rc != 0:
             msg = f'{self}: got error {rc} when getting details for revision {rev}'
-            raise Exception(msg)
+            raise RuntimeError(msg)
 
         # all file names are on one line
         output = output.decode(self.encoding, "replace")
@@ -357,9 +360,8 @@ class HgPoller(base.ReconfigurablePollingChangeSource, StateMixin):
             # but at once to avoid impact from later errors
             yield self._setCurrentRev(new_rev, branch)
 
-    def _stopOnFailure(self, f):
+    def _stopOnFailure(self):
         "utility method to stop the service when a failure occurs"
         if self.running:
             d = defer.maybeDeferred(self.stopService)
             d.addErrback(log.err, 'while stopping broken HgPoller service')
-        return f

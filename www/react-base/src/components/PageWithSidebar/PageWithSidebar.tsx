@@ -17,9 +17,13 @@
 
 import './PageWithSidebar.scss';
 import {observer} from "mobx-react";
-import {GlobalMenuSettings} from "../../plugins/GlobalMenuSettings";
-import SidebarStore from "../../stores/SidebarStore";
-import {Link} from "react-router-dom";
+import {FaAngleRight, FaBars, FaThumbtack} from "react-icons/fa";
+import {
+  getBestMatchingSettingsGroupRoute,
+  GlobalMenuSettings
+} from "../../plugins/GlobalMenuSettings";
+import {SidebarStore} from "../../stores/SidebarStore";
+import {Link, useLocation} from "react-router-dom";
 
 type PageWithSidebarProps = {
   menuSettings: GlobalMenuSettings,
@@ -27,7 +31,7 @@ type PageWithSidebarProps = {
   children: JSX.Element[] | JSX.Element,
 }
 
-const PageWithSidebar = observer(({menuSettings, sidebarStore, children}: PageWithSidebarProps) => {
+export const PageWithSidebar = observer(({menuSettings, sidebarStore, children}: PageWithSidebarProps) => {
   const {appTitle, groups, footerItems} = menuSettings;
 
   const pageWithSidebarClass = "gl-page-with-sidebar" +
@@ -37,20 +41,23 @@ const PageWithSidebar = observer(({menuSettings, sidebarStore, children}: PageWi
   let sidebarIcon: JSX.Element;
   if (sidebarStore.active) {
     sidebarIcon = (
-      <span onClick={() => sidebarStore.togglePinned()}
-            className={"menu-icon fa fa-thumb-tack" + (sidebarStore.pinned ? "" : " fa-45")}/>
+      <FaThumbtack onClick={() => sidebarStore.togglePinned()}
+                   className={"menu-icon" + (sidebarStore.pinned ? "" : " bb-rotate-45")}/>
     );
   } else {
     sidebarIcon = (
-      <span onClick={() => sidebarStore.show()} className="menu-icon fa fa-bars"/>
+      <FaBars onClick={() => sidebarStore.show()} className="menu-icon"/>
     );
   }
+
+  const matchingGroupRoute = getBestMatchingSettingsGroupRoute(useLocation().pathname, groups);
 
   const groupElements = groups.map((group, groupIndex) => {
     if (group.subGroups.length > 0) {
       const subGroups = group.subGroups.map(subGroup => {
           const subClassName = "sidebar-list subitem" +
-            (sidebarStore.activeGroup === group.name ? " active": "");
+            (sidebarStore.activeGroup === group.name ? " active": "") +
+            (subGroup.route === matchingGroupRoute ? " current": "");
 
           return (
             <li key={`group-${subGroup.name}`} className={subClassName}>
@@ -65,8 +72,8 @@ const PageWithSidebar = observer(({menuSettings, sidebarStore, children}: PageWi
       return [
         <li key={`group-${group.name}`} className="sidebar-list">
           <button onClick={() => {sidebarStore.toggleGroup(group.name); }}>
-            <i className="fa fa-angle-right"></i>&nbsp;{group.caption}
-            <span className={"menu-icon fa fa-" + group.icon}></span>
+            <FaAngleRight/>{group.caption}
+            <span className="menu-icon">{group.icon}</span>
           </button>
         </li>,
         ...subGroups
@@ -77,14 +84,18 @@ const PageWithSidebar = observer(({menuSettings, sidebarStore, children}: PageWi
     if (groupIndex > 0) {
       elements.push(<li key={`groupsep-${group.name}`} className="sidebar-separator"></li>);
     }
+
+    const groupClassName = "sidebar-list" +
+        (group.route === matchingGroupRoute ? " current": "");
+
     elements.push(
-      <li key={`group-${group.name}`} className="sidebar-list">
+      <li key={`group-${group.name}`} className={groupClassName}>
         {group.route === null
           ? <button onClick={() => sidebarStore.toggleGroup(group.name)}>{group.caption}
-            <span className={"menu-icon fa fa-" + group.icon}></span>
+            <span className="menu-icon">{group.icon}</span>
           </button>
           : <Link to={group.route} onClick={() => sidebarStore.toggleGroup(group.name)}>{group.caption}
-            <span className={"menu-icon fa fa-" + group.icon}></span>
+            <span className="menu-icon">{group.icon}</span>
           </Link>
         }
       </li>
@@ -103,7 +114,7 @@ const PageWithSidebar = observer(({menuSettings, sidebarStore, children}: PageWi
   return (
     <div className={pageWithSidebarClass}>
       <div onMouseEnter={() => sidebarStore.enter()} onMouseLeave={() => sidebarStore.leave()}
-           onClick={() => sidebarStore.show()} className="sidebar sidebar-blue">
+           onClick={() => sidebarStore.show()} className="sidebar">
         <ul>
           <li key="sidebar-main" className="sidebar-main"><Link to="/">{appTitle}{sidebarIcon}</Link></li>
           <li key="sidebar-title" className="sidebar-title"><span>NAVIGATION</span></li>
@@ -119,5 +130,3 @@ const PageWithSidebar = observer(({menuSettings, sidebarStore, children}: PageWi
     </div>
   );
 });
-
-export default PageWithSidebar;

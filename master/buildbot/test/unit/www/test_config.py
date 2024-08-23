@@ -15,8 +15,7 @@
 
 import json
 import os
-
-import mock
+from unittest import mock
 
 from twisted.internet import defer
 from twisted.python import log
@@ -27,6 +26,24 @@ from buildbot.test.util import www
 from buildbot.util import bytes2unicode
 from buildbot.www import auth
 from buildbot.www import config
+
+
+class Utils(unittest.TestCase):
+    def test_serialize_www_frontend_theme_to_css(self):
+        self.maxDiff = None
+        self.assertEqual(config.serialize_www_frontend_theme_to_css({}, indent=4), '''\
+--bb-sidebar-background-color: #30426a;
+    --bb-sidebar-header-background-color: #273759;
+    --bb-sidebar-header-text-color: #fff;
+    --bb-sidebar-title-text-color: #627cb7;
+    --bb-sidebar-footer-background-color: #273759;
+    --bb-sidebar-button-text-color: #b2bfdc;
+    --bb-sidebar-button-hover-background-color: #1b263d;
+    --bb-sidebar-button-hover-text-color: #fff;
+    --bb-sidebar-button-current-background-color: #273759;
+    --bb-sidebar-button-current-text-color: #b2bfdc;
+    --bb-sidebar-stripe-hover-color: #e99d1a;
+    --bb-sidebar-stripe-current-color: #8c5e10;''')
 
 
 class TestConfigResource(TestReactorMixin, www.WwwTestMixin, unittest.TestCase):
@@ -107,7 +124,7 @@ class IndexResource(TestReactorMixin, www.WwwTestMixin, unittest.TestCase):
         }
         self.assertEqual(res, exp)
 
-        master.session.user_info = dict(name="me", email="me@me.org")
+        master.session.user_info = {"name": 'me', "email": 'me@me.org'}
         res = yield self.render_resource(rsrc, b'/')
         res = json.loads(bytes2unicode(res))
         exp = {
@@ -174,11 +191,11 @@ class IndexResourceReactTest(TestReactorMixin, www.WwwTestMixin, unittest.TestCa
     def setUp(self):
         self.setup_test_reactor()
 
-    def get_react_static_path(self):
+    def get_react_base_path(self):
         path = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
         for _ in range(0, 4):
             path = os.path.dirname(path)
-        return os.path.join(path, 'www/react-base/public')
+        return os.path.join(path, 'www/react-base')
 
     def find_matching_line(self, lines, match, start_i):
         for i in range(start_i, len(lines)):
@@ -191,12 +208,12 @@ class IndexResourceReactTest(TestReactorMixin, www.WwwTestMixin, unittest.TestCa
 
         first_line = self.find_matching_line(lines, '<script id="bb-config">', 0)
         if first_line is None:
-            raise Exception("Could not find first config line")
+            raise RuntimeError("Could not find first config line")
         first_line += 1
 
         last_line = self.find_matching_line(lines, '</script>', first_line)
         if last_line is None:
-            raise Exception("Could not find last config line")
+            raise RuntimeError("Could not find last config line")
 
         config_json = '\n'.join(lines[first_line:last_line])
         config_json = config_json.replace('window.buildbotFrontendConfig = ', '').strip()
@@ -211,9 +228,12 @@ class IndexResourceReactTest(TestReactorMixin, www.WwwTestMixin, unittest.TestCa
         custom_versions = [['test compoent', '0.1.2'], ['test component 2', '0.2.1']]
 
         master = self.make_master(url='h:/a/b/', auth=_auth, versions=custom_versions,
-                                  plugins=['base_react'])
+                                  plugins={'base_react': True})
 
-        rsrc = config.IndexResourceReact(master, self.get_react_static_path())
+        # IndexResourceReact only uses static path to get index.html. In the source checkout
+        # index.html resides not in www/react-base/public but in www/react-base. Thus
+        # base path is sent to IndexResourceReact.
+        rsrc = config.IndexResourceReact(master, self.get_react_base_path())
         rsrc.reconfigResource(master.config)
 
         vjson = [list(v)
@@ -233,6 +253,6 @@ class IndexResourceReactTest(TestReactorMixin, www.WwwTestMixin, unittest.TestCa
             "buildbotURL": "h:/a/b/",
             "multiMaster": False,
             "port": None,
-            "plugins": ["base_react"],
+            "plugins": {},
         }
         self.assertEqual(config_json, exp)

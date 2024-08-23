@@ -1,18 +1,18 @@
-import React, {useContext} from 'react';
+import {observer} from "mobx-react";
+import React, {useContext, useEffect} from 'react';
 import './App.css';
-import './globals';
 import './styles/styles.scss';
 import 'bootstrap';
 import {Routes, Route} from "react-router-dom";
+import {ConfigContext, TopbarContext, useCurrentTimeSetupTimers} from "buildbot-ui";
 
-import PageWithSidebar from "./components/PageWithSidebar/PageWithSidebar";
+import {PageWithSidebar} from "./components/PageWithSidebar/PageWithSidebar";
 import {StoresContext} from "./contexts/Stores";
 import {globalMenuSettings} from "./plugins/GlobalMenuSettings";
 import {globalRoutes} from "./plugins/GlobalRoutes";
-import {useCurrentTimeSetupTimers} from "./util/Moment";
-import Topbar from "./components/Topbar/Topbar";
-import TopbarActions from "./components/TopbarActions/TopbarActions";
-import Loginbar from "./components/Loginbar/Loginbar";
+import {Topbar} from "./components/Topbar/Topbar";
+import {TopbarActions} from "./components/TopbarActions/TopbarActions";
+import {Loginbar} from "./components/Loginbar/Loginbar";
 
 // import the views so that they register themselves in the plugin system
 import './views/AboutView/AboutView';
@@ -26,14 +26,22 @@ import './views/ChangesView/ChangesView';
 import './views/ChangeBuildsView/ChangeBuildsView';
 import './views/LogView/LogView';
 import './views/MastersView/MastersView';
+import './views/ProjectView/ProjectView';
+import './views/ProjectsView/ProjectsView';
 import './views/SettingsView/SettingsView';
 import './views/SchedulersView/SchedulersView';
 import './views/WorkersView/WorkersView';
 import './views/WorkerView/WorkerView';
-import UrlNotFoundView from "./views/UrlNotFoundView/UrlNotFoundView";
+import {UrlNotFoundView} from "./views/UrlNotFoundView/UrlNotFoundView";
 
-function App() {
+export const App = observer(() => {
   const stores = useContext(StoresContext);
+  const config = useContext(ConfigContext);
+  const topbarStore = useContext(TopbarContext);
+
+  useEffect(() => {
+    globalMenuSettings.setAppTitle(config.title);
+  }, [config.title]);
 
   useCurrentTimeSetupTimers();
 
@@ -46,8 +54,8 @@ function App() {
 
   return (
     <PageWithSidebar menuSettings={globalMenuSettings} sidebarStore={stores.sidebar}>
-      <Topbar store={stores.topbar} appTitle={globalMenuSettings.appTitle}>
-        <TopbarActions store={stores.topbarActions}/>
+      <Topbar store={topbarStore} appTitle={globalMenuSettings.appTitle}>
+        <TopbarActions store={topbarStore}/>
         <Loginbar/>
       </Topbar>
       <Routes>
@@ -55,6 +63,4 @@ function App() {
       </Routes>
     </PageWithSidebar>
   );
-}
-
-export default App;
+});

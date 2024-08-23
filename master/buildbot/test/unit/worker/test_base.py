@@ -13,9 +13,9 @@
 #
 # Copyright Buildbot Team Members
 
-from parameterized import parameterized
+from unittest import mock
 
-import mock
+from parameterized import parameterized
 
 from twisted.internet import defer
 from twisted.trial import unittest
@@ -202,8 +202,10 @@ class TestAbstractWorker(logging.LoggingMixin, TestReactorMixin, unittest.TestCa
 
     @defer.inlineCallbacks
     def test_constructor_full(self):
-        lock1, lock2 = locks.MasterLock('lock1'), locks.MasterLock('lock2')
-        access1, access2 = lock1.access('counting'), lock2.access('counting')
+        lock1 = locks.MasterLock('lock1')
+        lock2 = locks.MasterLock('lock2')
+        access1 = lock1.access('counting')
+        access2 = lock2.access('counting')
 
         bs = yield self.createWorker('bot', 'pass',
                             max_builds=2,
@@ -312,7 +314,7 @@ class TestAbstractWorker(logging.LoggingMixin, TestReactorMixin, unittest.TestCa
 
         # we create a fake builder, and associate to the master
         self.botmaster.builders['bot'] = [FakeBuilder()]
-        self.master.db.insertTestData([
+        self.master.db.insert_test_data([
             fakedb.Builder(id=1, name='builder'),
             fakedb.BuilderMaster(builderid=1, masterid=824)
         ])
@@ -490,7 +492,7 @@ class TestAbstractWorker(logging.LoggingMixin, TestReactorMixin, unittest.TestCa
     @defer.inlineCallbacks
     def test_startService_paused_true(self):
         """Test that paused state is restored on a buildbot restart"""
-        self.master.db.insertTestData([
+        self.master.db.insert_test_data([
             fakedb.Worker(id=9292, name='bot', paused=1)
         ])
 
@@ -504,7 +506,7 @@ class TestAbstractWorker(logging.LoggingMixin, TestReactorMixin, unittest.TestCa
     @defer.inlineCallbacks
     def test_startService_graceful_true(self):
         """Test that graceful state is NOT restored on a buildbot restart"""
-        self.master.db.insertTestData([
+        self.master.db.insert_test_data([
             fakedb.Worker(id=9292, name='bot', graceful=1)
         ])
 
@@ -528,7 +530,7 @@ class TestAbstractWorker(logging.LoggingMixin, TestReactorMixin, unittest.TestCa
 
     @defer.inlineCallbacks
     def test_startService_getWorkerInfo_fromDb(self):
-        self.master.db.insertTestData([
+        self.master.db.insert_test_data([
             fakedb.Worker(id=9292, name='bot', info={
                 'admin': 'TheAdmin',
                 'host': 'TheHost',
@@ -599,7 +601,7 @@ class TestAbstractWorker(logging.LoggingMixin, TestReactorMixin, unittest.TestCa
     @defer.inlineCallbacks
     def test_attached_workerInfoUpdates(self):
         # put in stale info:
-        self.master.db.insertTestData([
+        self.master.db.insert_test_data([
             fakedb.Worker(name='bot', info={
                 'admin': 'WrongAdmin',
                 'host': 'WrongHost',

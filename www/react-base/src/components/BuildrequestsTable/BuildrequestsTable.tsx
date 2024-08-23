@@ -19,23 +19,36 @@ import {Table} from "react-bootstrap";
 import Tab from 'react-bootstrap/Tab';
 import Tabs from 'react-bootstrap/Tabs';
 import {observer} from "mobx-react";
-import {dateFormat, durationFromNowFormat, useCurrentTime} from "../../util/Moment";
-import DataCollection from "../../data/DataCollection";
 import {Link} from "react-router-dom";
-import {getPropertyValueArrayOrEmpty, getPropertyValueOrDefault} from "../../util/Properties";
-import {Buildrequest} from "../../data/classes/Buildrequest";
-import BadgeRound from "../BadgeRound/BadgeRound";
+import {
+  BadgeRound,
+  dateFormat,
+  durationFromNowFormat,
+  useCurrentTime
+} from "buildbot-ui";
+import {
+  Buildrequest,
+  DataCollection,
+  getPropertyValueArrayOrEmpty,
+  getPropertyValueOrDefault
+} from "buildbot-data-js";
 
 type BuildRequestsTableProps = {
   buildrequests: DataCollection<Buildrequest>;
 }
 
-const BuildRequestsTable = observer(({buildrequests}: BuildRequestsTableProps) => {
+export const BuildRequestsTable = observer(({buildrequests}: BuildRequestsTableProps) => {
   const now = useCurrentTime();
   const tableElement = () => {
 
     const sortedBuildrequests = buildrequests.array.slice()
-      .sort((a, b) => a.submitted_at - b.submitted_at);
+      .sort((a, b) => {
+        const byPriority = a.priority - b.priority;
+        if (byPriority !== 0) {
+          return byPriority;
+        }
+        return a.submitted_at - b.submitted_at;
+      });
 
     const rowElements = sortedBuildrequests.filter(br => !br.claimed).map(br => {
       const owners = [
@@ -51,6 +64,9 @@ const BuildRequestsTable = observer(({buildrequests}: BuildRequestsTableProps) =
             <Link to={`/buildrequests/${br.buildrequestid}`}>
               <BadgeRound className=''>{br.buildrequestid.toString()}</BadgeRound>
             </Link>
+          </td>
+          <td>
+            {br.priority}
           </td>
           <td>
             <span title={dateFormat(br.submitted_at)}>
@@ -70,6 +86,7 @@ const BuildRequestsTable = observer(({buildrequests}: BuildRequestsTableProps) =
         <tbody>
           <tr>
             <td width="100px">#</td>
+            <td width="100px">Priority</td>
             <td width="150px">Submitted At</td>
             <td width="150px">Owners</td>
             <td>Properties</td>
@@ -90,5 +107,3 @@ const BuildRequestsTable = observer(({buildrequests}: BuildRequestsTableProps) =
     </div>
   )
 });
-
-export default BuildRequestsTable;

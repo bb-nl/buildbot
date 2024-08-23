@@ -5,6 +5,7 @@
 }
 
 .bb-logviewer-text-area {
+  padding-left: 0.5em;
   background-color: #000;
   color: $bb-color-log-white;
   .padding {
@@ -78,5 +79,33 @@
 }
 
 .bb-logviewer-text-row > span {
-  white-space: nowrap;
+  white-space: pre;
+}
+
+.bb-logviewer-text-download-log {
+  .bb-log-download-button {
+    color: #ccc;
+  }
+  .bb-log-download-button:hover {
+    color: white;
+  }
+}
+
+.bb-logviewer-result {
+  background-color: orange;
+  color: black;
+}
+
+.bb-logviewer-result.bb-logviewer-result-current {
+  background-color: yellow;
+}
+
+.bb-logviewer-result-begin {
+  border-top-left-radius: 0.3rem;
+  border-bottom-left-radius: 0.3rem;
+}
+
+.bb-logviewer-result-end {
+  border-top-right-radius: 0.3rem;
+  border-bottom-right-radius: 0.3rem;
 }

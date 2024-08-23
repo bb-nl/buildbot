@@ -24,6 +24,8 @@ In the default configuration Buildbot uses a file-based SQLite database, stored 
    However, it does not scale well with large numbers of builders, workers and users.
    If you expect your Buildbot to grow over time, it is strongly advised to use a real database server (e.g., MySQL or Postgres).
 
+   A SQLite3 database may be migrated to a real database server using ``buildbot copy-db`` script.
+
    See the :ref:`Database-Server` section for more details.
 
 Override this configuration with the :bb:cfg:`db_url` parameter.
@@ -152,16 +154,7 @@ Wamp
 
 This is a MQ implementation using the `wamp <http://wamp.ws/>`_ protocol.
 This implementation uses `Python Autobahn <http://autobahn.ws>`_ wamp client library, and is fully asynchronous (no use of threads).
-To use this implementation, you need a wamp router like `Crossbar <http://crossbar.io>`_.
-
-Please refer to Crossbar documentation for more details, but the default Crossbar setup will just work with Buildbot, provided you use the example ``mq`` configuration above, and start Crossbar with:
-
-.. code-block:: bash
-
-    # of course, you should work in a virtualenv...
-    pip install crossbar
-    crossbar init
-    crossbar start
+To use this implementation, you need a wamp router like Crossbar.
 
 The implementation does not yet support wamp authentication.
 This MQ allows buildbot to run in multi-master mode.
@@ -180,6 +173,89 @@ For example, if a change is received, but the master shuts down before the sched
 You must use a router with very reliable connection to the master.
 If for some reason, the wamp connection is lost, then the master will stop, and should be restarted via a process manager.
 
+.. _mq-Crossbar:
+
+Crossbar
+++++++++
+
+The default Crossbar setup will just work with Buildbot, provided you use the example ``mq``
+configuration below, and start Crossbar with:
+
+.. code-block:: bash
+
+    # of course, you should work in a virtualenv...
+    pip install crossbar
+    crossbar init
+    crossbar start
+
+.crossbar/config.json:
+
+.. code-block:: bash
+
+    {
+        "version": 2,
+        "controller": {},
+        "workers": [
+            {
+                "type": "router",
+                "realms": [
+                    {
+                        "name": "test_realm",
+                        "roles": [
+                            {
+                                "name": "anonymous",
+                                "permissions": [
+                                    {
+                                        "uri": "",
+                                        "match": "prefix",
+                                        "allow": {
+                                            "call": true,
+                                            "register": true,
+                                            "publish": true,
+                                            "subscribe": true
+                                        },
+                                        "disclose": {
+                                            "caller": false,
+                                            "publisher": false
+                                        },
+                                        "cache": true
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ],
+                "transports": [
+                    {
+                        "type": "web",
+                        "endpoint": {
+                            "type": "tcp",
+                            "port": 1245
+                        },
+                        "paths": {
+                            "ws": {
+                                "type": "websocket"
+                            }
+                        }
+                    }
+                ]
+            }
+        ]
+    }
+
+Buildbot can be configured to use Crossbar by the following:
+
+.. code-block:: bash
+
+    c["mq"] = {
+        "type" : "wamp",
+        "router_url": "ws://localhost:1245/ws",
+        "realm": "test_realm",
+        "wamp_debug_level" : "warn"
+    }
+
+Please refer to `Crossbar <https://github.com/crossbario/crossbar/tree/master>`_ documentation for
+more details.
 
 .. bb:cfg:: multiMaster
 
@@ -498,7 +574,10 @@ Metrics Options
 
 .. code-block:: python
 
-    c['metrics'] = dict(log_interval=10, periodic_interval=10)
+    c['metrics'] = {
+        "log_interval": 10,
+        "periodic_interval": 10
+    }
 
 :bb:cfg:`metrics` can be a dictionary that configures various aspects of the metrics subsystem.
 If :bb:cfg:`metrics` is ``None``, then metrics collection, logging and reporting will be disabled.

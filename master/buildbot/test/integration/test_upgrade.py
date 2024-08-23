@@ -77,7 +77,10 @@ class UpgradeTestMixin(db.RealDatabaseMixin, TestReactorMixin):
             with tarfile.open(tarball) as tf:
                 prefixes = set()
                 for inf in tf:
-                    tf.extract(inf)
+                    if hasattr(tarfile, 'data_filter'):
+                        tf.extract(inf, filter='data')
+                    else:
+                        tf.extract(inf)
                     prefixes.add(inf.name.split('/', 1)[0])
 
             # (note that tf.extractall isn't available in py2.4)
@@ -137,10 +140,14 @@ class UpgradeTestMixin(db.RealDatabaseMixin, TestReactorMixin):
             diff = []
             for tbl in self.db.model.metadata.sorted_tables:
                 exp = sorted([
-                    dict(name=idx.name,
-                         unique=idx.unique and 1 or 0,
-                         column_names=sorted([c.name for c in idx.columns]))
-                    for idx in tbl.indexes], key=lambda x: x['name'])
+                    {
+                        "name": idx.name,
+                        "unique": idx.unique and 1 or 0,
+                        "column_names": sorted([c.name for c in idx.columns])
+                    }
+                    for idx in tbl.indexes
+                ], key=lambda x: x['name']
+            )
 
                 # include implied indexes on postgres and mysql
                 if engine.dialect.name == 'mysql':
@@ -162,9 +169,11 @@ class UpgradeTestMixin(db.RealDatabaseMixin, TestReactorMixin):
                     for name in exp_names - got_names:
                         diff.append(f"missing index {name} on table {tbl.name}")
                     for name in got_names & exp_names:
-                        gi = dict(name=name,
-                                  unique=got_info[name]['unique'] and 1 or 0,
-                                  column_names=sorted(got_info[name]['column_names']))
+                        gi = {
+                            "name": name,
+                            "unique": got_info[name]['unique'] and 1 or 0,
+                            "column_names": sorted(got_info[name]['column_names'])
+                        }
                         ei = exp_info[name]
                         if gi != ei:
                             diff.append(f"index {name} on table {tbl.name} differs: "

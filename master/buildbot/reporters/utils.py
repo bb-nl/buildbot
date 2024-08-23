@@ -64,7 +64,7 @@ def getDetailsForBuildset(master, bsid, want_properties=False, want_steps=False,
                                   want_logs=want_logs,
                                   want_logs_content=want_logs_content)
 
-    return dict(buildset=buildset, builds=builds)
+    return {"buildset": buildset, "builds": builds}
 
 
 @defer.inlineCallbacks
@@ -72,7 +72,8 @@ def getDetailsForBuild(master, build, want_properties=False, want_steps=False,
                        want_previous_build=False, want_logs=False, want_logs_content=False):
     buildrequest = yield master.data.get(("buildrequests", build['buildrequestid']))
     buildset = yield master.data.get(("buildsets", buildrequest['buildsetid']))
-    build['buildrequest'], build['buildset'] = buildrequest, buildset
+    build['buildrequest'] = buildrequest
+    build['buildset'] = buildset
 
     parentbuild = None
     parentbuilder = None
@@ -221,19 +222,33 @@ def getResponsibleUsersForBuild(master, buildid):
     return blamelist
 
 
+# perhaps we need data api for users with buildsets/:id/users
+@defer.inlineCallbacks
+def get_responsible_users_for_buildset(master, buildsetid):
+    props = yield master.data.get(("buildsets", buildsetid, "properties"))
+
+    # TODO: This currently does not track what changes were in the buildset. getChangesForBuild()
+    # would walk the change graph until it finds last successful build and uses the authors of
+    # the changes as blame list. Probably this needs to be done here too
+    owner = props.get("owner", None)
+    if owner:
+        return [owner[0]]
+    return []
+
+
 def getURLForBuild(master, builderid, build_number):
     prefix = master.config.buildbotURL
-    return prefix + f"#builders/{builderid}/builds/{build_number}"
+    return prefix + f"#/builders/{builderid}/builds/{build_number}"
 
 
 def getURLForBuildrequest(master, buildrequestid):
     prefix = master.config.buildbotURL
-    return f"{prefix}#buildrequests/{buildrequestid}"
+    return f"{prefix}#/buildrequests/{buildrequestid}"
 
 
 def get_url_for_log(master, builderid, build_number, step_number, log_slug):
     prefix = master.config.buildbotURL
-    return f"{prefix}#builders/{builderid}/builds/{build_number}/" + \
+    return f"{prefix}#/builders/{builderid}/builds/{build_number}/" + \
         f"steps/{step_number}/logs/{log_slug}"
 
 

@@ -46,7 +46,7 @@ def _db2data(ss):
 
 class SourceStampEndpoint(base.Endpoint):
 
-    isCollection = False
+    kind = base.EndpointKind.SINGLE
     pathPatterns = """
         /sourcestamps/n:ssid
     """
@@ -60,16 +60,23 @@ class SourceStampEndpoint(base.Endpoint):
 
 class SourceStampsEndpoint(base.Endpoint):
 
-    isCollection = True
+    kind = base.EndpointKind.COLLECTION
     pathPatterns = """
         /sourcestamps
+        /buildsets/:buildsetid/sourcestamps
     """
     rootLinkName = 'sourcestamps'
 
     @defer.inlineCallbacks
     def get(self, resultSpec, kwargs):
-        return [_db2data(ssdict) for ssdict in
-            (yield self.master.db.sourcestamps.getSourceStamps())]
+        buildsetid = kwargs.get("buildsetid")
+        if buildsetid is not None:
+            sourcestamps = \
+                yield self.master.db.sourcestamps.get_sourcestamps_for_buildset(buildsetid)
+        else:
+            sourcestamps = yield self.master.db.sourcestamps.getSourceStamps()
+
+        return [_db2data(ssdict) for ssdict in sourcestamps]
 
 
 class SourceStamp(base.ResourceType):

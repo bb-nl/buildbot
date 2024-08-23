@@ -19,7 +19,9 @@ import os
 from binascii import hexlify
 
 import jwt
+from packaging.version import parse as parse_version
 
+import twisted
 from twisted.application import strports
 from twisted.cred.portal import IRealm
 from twisted.cred.portal import Portal
@@ -84,6 +86,10 @@ class BuildbotSession(server.Session):
                                  SESSION_SECRET_ALGORITHM])
         except jwt.exceptions.ExpiredSignatureError as e:
             raise KeyError(str(e)) from e
+        except jwt.exceptions.InvalidSignatureError as e:
+            log.msg(e, "Web request has been rejected."
+                    "Signature verification failed while decoding JWT.")
+            raise KeyError(str(e)) from e
         except Exception as e:
             log.err(e, "while decoding JWT session")
             raise KeyError(str(e)) from e
@@ -126,7 +132,7 @@ class BuildbotSession(server.Session):
 
         This should actually only be used for cookie generation
         """
-        exp = datetime.datetime.utcnow() + self.expDelay
+        exp = datetime.datetime.now(datetime.timezone.utc) + self.expDelay
         claims = {
             'user_info': self.user_info,
             # Note that we use JWT standard 'exp' field to implement session expiration
@@ -269,6 +275,17 @@ class WWWService(service.ReconfigurableServiceMixin, service.AsyncMultiService):
             self.base_plugin_name = 'base'
 
     def configPlugins(self, root, new_config):
+        plugin_root = root
+        if self.base_plugin_name == 'base_react':
+            current_version = parse_version(twisted.__version__)
+            if current_version < parse_version("22.10.0"):
+                from twisted.web.resource import NoResource
+                plugin_root = NoResource()
+            else:
+                from twisted.web.pages import notFound
+                plugin_root = notFound()
+            root.putChild(b"plugins", plugin_root)
+
         known_plugins = set(new_config.www.get('plugins', {})) | set([self.base_plugin_name])
         for key, plugin in list(new_config.www.get('plugins', {}).items()):
             log.msg(f"initializing www plugin {repr(key)}")
@@ -277,7 +294,8 @@ class WWWService(service.ReconfigurableServiceMixin, service.AsyncMultiService):
             app = self.apps.get(key)
             app.setMaster(self.master)
             app.setConfiguration(plugin)
-            root.putChild(unicode2bytes(key), app.resource)
+            plugin_root.putChild(unicode2bytes(key), app.resource)
+
             if not app.ui:
                 del new_config.www['plugins'][key]
         for plugin_name in set(self.apps.names) - known_plugins:
@@ -288,8 +306,10 @@ class WWWService(service.ReconfigurableServiceMixin, service.AsyncMultiService):
 
         self.reconfigurableResources = []
 
-        # we're going to need at least the base plugin (buildbot-www)
+        # we're going to need at least the base plugin (buildbot-www or buildbot-www-react)
         if self.base_plugin_name not in self.apps:
+            if self.base_plugin_name == 'base_react':
+                raise RuntimeError("could not find buildbot-www-react; is it installed?")
             raise RuntimeError("could not find buildbot-www; is it installed?")
 
         root = self.apps.get(self.base_plugin_name).resource

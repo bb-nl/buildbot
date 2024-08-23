@@ -19,7 +19,7 @@ import './RawData.scss';
 import {useState} from "react";
 import _ from "underscore";
 import {isObservableArray, isObservableObject} from "mobx";
-import ArrowExpander from "../ArrowExpander/ArrowExpander";
+import {ArrowExpander} from "buildbot-ui";
 
 const isArrayRaw = (v: any) => {
   return _.isArray(v) || isObservableArray(v);
@@ -36,7 +36,7 @@ type RawDataProps = {
   data: {[key: string]: any};
 }
 
-const RawData = ({data}: RawDataProps) => {
+export const RawData = ({data}: RawDataProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
   const renderArrayElements = (value: any[]) => {
@@ -52,8 +52,11 @@ const RawData = ({data}: RawDataProps) => {
   }
 
   const renderDataElement = (value: any) => {
-    if (!isObjectRaw(value) && !isArrayOfObjectsRaw(value)) {
-      return <dd>{value === null ? "null" : value.toString()}&nbsp;</dd>;
+    if (value === null) {
+      return <dd>{"null"}&nbsp;</dd>;
+    }
+    if (value === undefined) {
+      return <dd>{"undefined"}&nbsp;</dd>;
     }
     if (isArrayOfObjectsRaw(value)) {
       return (
@@ -71,6 +74,8 @@ const RawData = ({data}: RawDataProps) => {
         </dd>
       )
     }
+
+    return <dd>{value.toString()}&nbsp;</dd>;
   }
 
   const renderElements = () => {
@@ -96,5 +101,3 @@ const RawData = ({data}: RawDataProps) => {
     </dl>
   );
 }
-
-export default RawData;

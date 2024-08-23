@@ -16,8 +16,7 @@
 import json
 import os
 import textwrap
-
-import mock
+from unittest import mock
 
 from autobahn.wamp.exception import TransportLost
 from autobahn.wamp.types import SubscribeOptions
@@ -230,7 +229,7 @@ class WampMQ(TestReactorMixin, unittest.TestCase):
 
 
 class FakeConfig:
-    mq = dict(type='wamp', router_url="wss://foo", realm="realm1")
+    mq = {"type": 'wamp', "router_url": 'wss://foo', "realm": 'realm1'}
 
 
 class WampMQReal(TestReactorMixin, unittest.TestCase):
@@ -245,9 +244,6 @@ class WampMQReal(TestReactorMixin, unittest.TestCase):
         > crossbar start &
         > export WAMP_ROUTER_URL=ws://localhost:8080/ws
         > trial buildbot.unit.test_mq_wamp""")
-    # if connection is bad, this test can timeout easily
-    # we reduce the timeout to help maintain the sanity of the developer
-    timeout = 2
 
     @defer.inlineCallbacks
     def setUp(self):

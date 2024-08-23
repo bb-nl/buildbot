@@ -26,6 +26,8 @@ from buildbot.test.reactor import TestReactorMixin
 from buildbot.test.runprocess import ExpectMasterShell
 from buildbot.test.runprocess import MasterRunProcessMixin
 from buildbot.test.util import changesource
+from buildbot.test.util.warnings import assertProducesWarnings
+from buildbot.warnings import DeprecatedApiWarning
 
 # this is the output of "svn info --xml
 # svn+ssh://svn.twistedmatrix.com/svn/Twisted/trunk"
@@ -245,9 +247,9 @@ def make_logentry_elements(maxrevision):
 def split_file(path):
     pieces = path.split("/")
     if pieces[0] == "branch":
-        return dict(branch="branch", path="/".join(pieces[1:]))
+        return {"branch": 'branch', "path": '/'.join(pieces[1:])}
     if pieces[0] == "trunk":
-        return dict(path="/".join(pieces[1:]))
+        return {"path": '/'.join(pieces[1:])}
     raise RuntimeError(f"there shouldn't be any files like {repr(path)}")
 
 
@@ -644,7 +646,15 @@ class TestSVNPoller(MasterRunProcessMixin,
         self.assertEqual(len(self.flushLoggedErrors(ValueError)), 1)
 
     def test_constructor_pollinterval(self):
-        return self.attachSVNPoller(sample_base, pollinterval=100)  # just don't fail!
+        return self.attachSVNPoller(sample_base, pollInterval=100)  # just don't fail!
+
+    def test_deprecated_pollinterval(self):
+        with assertProducesWarnings(
+            DeprecatedApiWarning,
+            2,
+            message_pattern='pollinterval has been deprecated: ' + 'please use pollInterval',
+        ):
+            return self.attachSVNPoller(sample_base, pollinterval=100)
 
     @defer.inlineCallbacks
     def test_extra_args(self):
@@ -665,7 +675,7 @@ class TestSplitFile(unittest.TestCase):
 
     def test_split_file_alwaystrunk(self):
         self.assertEqual(
-            svnpoller.split_file_alwaystrunk('foo'), dict(path='foo'))
+            svnpoller.split_file_alwaystrunk('foo'), {"path": 'foo'})
 
     def test_split_file_branches_trunk(self):
         self.assertEqual(
@@ -725,11 +735,11 @@ class TestSplitFile(unittest.TestCase):
         self.assertEqual(
             svnpoller.split_file_projects_branches(
                 'buildbot/trunk/subdir/file.c'),
-            dict(project='buildbot', path='subdir/file.c'))
+            {"project": 'buildbot', "path": 'subdir/file.c'})
         self.assertEqual(
             svnpoller.split_file_projects_branches(
                 'buildbot/branches/1.5.x/subdir/file.c'),
-            dict(project='buildbot', branch='branches/1.5.x', path='subdir/file.c'))
+            {"project": 'buildbot', "branch": 'branches/1.5.x', "path": 'subdir/file.c'})
         # tags are ignored:
         self.assertEqual(
             svnpoller.split_file_projects_branches(

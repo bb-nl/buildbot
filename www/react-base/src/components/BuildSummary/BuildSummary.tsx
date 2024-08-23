@@ -16,28 +16,41 @@
 */
 
 import './BuildSummary.scss';
-import {observer} from "mobx-react";
-import {results2class, results2text, SUCCESS} from "../../util/Results";
 import {useContext, useState} from "react";
-import {ConfigContext} from "../../contexts/Config";
-import {useDataAccessor, useDataApiDynamicQuery, useDataApiQuery} from "../../data/ReactUtils";
-import {analyzeStepUrls, useStepUrlAnalyzer} from "../../util/StepUrls";
-import {durationFormat, useCurrentTime} from "../../util/Moment";
-import {Log} from "../../data/classes/Log";
-import {globalSettings} from "../../plugins/GlobalSettings";
-import {Step} from "../../data/classes/Step";
-import {Build} from "../../data/classes/Build";
-import {Builder} from "../../data/classes/Builder";
-import {getPropertyValueOrDefault} from "../../util/Properties";
+import {observer} from "mobx-react";
+import {FaExpand} from "react-icons/fa";
+import {buildbotGetSettings} from "buildbot-plugin-support";
+import {
+  ArrowExpander,
+  BadgeRound,
+  BadgeStatus,
+  ConfigContext,
+  analyzeStepUrls,
+  durationFormat,
+  useCurrentTime,
+  useStateWithParentTrackingWithDefaultIfNotSet,
+  useStepUrlAnalyzer
+} from "buildbot-ui";
+import {
+  Build,
+  Builder,
+  DataCollection,
+  Log,
+  Step,
+  getPropertyValueOrDefault,
+  results2class,
+  results2text,
+  SUCCESS,
+  useDataAccessor,
+  useDataApiDynamicQuery,
+  useDataApiQuery,
+} from "buildbot-data-js";
 import {Link} from "react-router-dom";
-import DataCollection from "../../data/DataCollection";
-import LogPreview from "../LogPreview/LogPreview";
-import {useStateWithParentTracking} from "../../util/React";
-import ArrowExpander from "../ArrowExpander/ArrowExpander";
-import BuildRequestSummary from "../BuildRequestSummary/BuildRequestSummary";
-import BadgeRound from "../BadgeRound/BadgeRound";
-import BadgeStatus from "../BadgeStatus/BadgeStatus";
+import {LogPreview} from "../LogPreview/LogPreview";
+import {BuildRequestSummary} from "../BuildRequestSummary/BuildRequestSummary";
 import {Card} from "react-bootstrap";
+import {useScrollToAnchor} from "../../util/AnchorLinks";
+import {AnchorLink} from "../AnchorLink/AnchorLink";
 
 enum DetailLevel {
   None = 0,
@@ -90,17 +103,44 @@ type BuildSummaryStepLineProps = {
   parentFullDisplay: boolean
 }
 
+function getTimeTextForStep(step: Step, now: number) {
+  const lockDuration = step.locks_acquired_at !== null
+    ? step.locks_acquired_at - step.started_at!
+    : 0;
+
+  if (step.complete) {
+    const stepDurationText = durationFormat(step.complete_at! - step.started_at!);
+
+    if (lockDuration > 1) {
+      // Since lock delay includes general step setup overhead, then sometimes the started_at and locks_acquired_at
+      // may fall into different seconds. However, it's unlikely that step setup would take more than one second.
+      return `${stepDurationText} (${durationFormat(lockDuration)} spent waiting for locks)`
+    }
+    return stepDurationText;
+  }
+
+  const ongoingStepDurationText = durationFormat(now - step.started_at!);
+  if (lockDuration > 1) {
+    // Since lock delay includes general step setup overhead, then sometimes the started_at and locks_acquired_at
+    // may fall into different seconds. However, it's unlikely that step setup would take more than one second.
+    return `${ongoingStepDurationText} (${durationFormat(lockDuration)} spent waiting for locks)`
+  }
+
+  return ongoingStepDurationText;
+}
+
 const BuildSummaryStepLine = observer(({build, step, logs, parentFullDisplay}: BuildSummaryStepLineProps) => {
   const config = useContext(ConfigContext);
   const now = useCurrentTime();
 
-  const logsToExpand = globalSettings.getStringSetting("LogPreview.expand_logs");
-  const showUrls = globalSettings.getBooleanSetting("Build.show_urls");
+  const logsToExpand = buildbotGetSettings().getStringSetting("LogPreview.expand_logs");
+  const showUrls = buildbotGetSettings().getBooleanSetting("Build.show_urls");
 
   const baseUrls = config.buildbotURLs || [config.buildbotURL];
   const stepUrlAnalyzer = useStepUrlAnalyzer(baseUrls);
 
-  const [fullDisplay, setFullDisplay] = useStateWithParentTracking(parentFullDisplay, !step.complete || (step.results !== SUCCESS));
+  const [fullDisplay, setFullDisplay] = useStateWithParentTrackingWithDefaultIfNotSet(
+    parentFullDisplay, () => !step.complete || (step.results !== SUCCESS));
 
   const renderState = () => {
     if (step.started_at === null) {
@@ -108,12 +148,8 @@ const BuildSummaryStepLine = observer(({build, step, logs, parentFullDisplay}: B
     }
 
     return (
-      <span className="pull-right">
-          {
-            step.complete
-              ? <span>{durationFormat(step.complete_at! - step.started_at)}</span>
-              : <span>{durationFormat(now - step.started_at)}</span>
-          }
+      <span className="bb-build-summary-time">
+          {getTimeTextForStep(step, now)}
         &nbsp;
         {step.state_string}
         </span>
@@ -160,7 +196,7 @@ const BuildSummaryStepLine = observer(({build, step, logs, parentFullDisplay}: B
     return getStepLogsInDisplayOrder(logs).map(log => {
       const initialFullDisplay = logs.array.length === 1 || shouldExpandLog(log, logsToExpand);
       return (
-        <LogPreview builderid={build.builderid} buildnumber={build.number}
+        <LogPreview key={log.id} builderid={build.builderid} buildnumber={build.number}
                     stepnumber={step.number} log={log} initialFullDisplay={initialFullDisplay}/>
       );
     });
@@ -184,8 +220,12 @@ const BuildSummaryStepLine = observer(({build, step, logs, parentFullDisplay}: B
   }
 
   return (
-    <li key={step.id} className="list-group-item">
+    <li key={step.id} className="bb-build-summary-step-line list-group-item" id={`bb-step-${step.number}`}>
       <div onClick={() => setFullDisplay(!fullDisplay)}>
+        <AnchorLink className="bb-build-summary-step-anchor-link"
+                    anchor={`bb-step-${step.number}`}>
+          #
+        </AnchorLink>
         <BadgeRound className={results2class(step, 'pulse')}>{step.number.toString()}</BadgeRound>
         &nbsp;
         {maybeRenderArrowExpander()}
@@ -207,8 +247,8 @@ type BuildSummaryProps = {
   condensed: boolean;
 }
 
-const BuildSummary = observer(({build, parentBuild, parentRelationship,
-                                condensed}: BuildSummaryProps) => {
+export const BuildSummary = observer(({build, parentBuild, parentRelationship,
+                                       condensed}: BuildSummaryProps) => {
   const accessor = useDataAccessor([build.id]);
   const now = useCurrentTime();
 
@@ -255,6 +295,8 @@ const BuildSummary = observer(({build, parentBuild, parentRelationship,
     );
   }
 
+  useScrollToAnchor(stepsToDisplay.map(step => step.id));
+
   const stepElements = stepsToDisplay.map(step => (
     <BuildSummaryStepLine key={step.id} build={build} step={step}
                           logs={logsQuery.getParentCollectionOrEmpty(step.id)}
@@ -270,7 +312,7 @@ const BuildSummary = observer(({build, parentBuild, parentRelationship,
         </div>
         <div onClick={toggleDetails} title="Show steps according to their importance"
              className="btn btn-xs btn-default">
-          <i className="fa fa-expand"></i>
+          <FaExpand/>
           {detailLevelToString(detailLevel)}
         </div>
         { builder !== null
@@ -298,5 +340,3 @@ const BuildSummary = observer(({build, parentBuild, parentRelationship,
     </Card>
   );
 });
-
-export default BuildSummary;

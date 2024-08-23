@@ -16,16 +16,18 @@
 */
 
 import {action, makeObservable, observable} from "mobx";
-import {Config} from "../contexts/Config";
+import {Config} from "buildbot-ui";
+import {ISettings, registerBuildbotSettingsSingleton} from "buildbot-plugin-support";
 
 export type SettingValue = string | number | boolean;
-export type SettingType = "string" | "integer" | "float" | "boolean";
+export type SettingType = "string" | "integer" | "float" | "boolean" | "choice_combo";
 
 export type SettingItemConfig = {
   name: string;
   type: SettingType;
   caption: string;
   defaultValue: SettingValue;
+  choices?: string[]; // only when type == "choice_combo"
 }
 
 export type SettingGroupConfig = {
@@ -39,6 +41,7 @@ export type SettingItem = {
   type: string;
   value: SettingValue;
   defaultValue: SettingValue;
+  choices?: string[]; // only when type == "choice_combo"
   caption: string;
 }
 
@@ -53,7 +56,7 @@ export type SettingGroups = {[name: string]: SettingGroup};
 type StoredSettingGroup = {[name: string]: SettingValue};
 type StoredSettingGroups = {[name: string]: StoredSettingGroup};
 
-export class GlobalSettings {
+export class GlobalSettings implements ISettings {
   @observable groups: SettingGroups = {};
 
   constructor() {
@@ -180,9 +183,14 @@ export class GlobalSettings {
     return this.getTypedSettingOrDefault(selector, 'boolean', false);
   }
 
+  getChoiceComboSetting(selector: string) {
+    return this.getTypedSettingOrDefault(selector, 'choice_combo', '');
+  }
+
   @action private setSettingItem(item: SettingItem, value: SettingValue) {
     switch (item.type) {
       case "string":
+      case "choice_combo":
         item.value = value.toString();
         break;
       case "integer": {
@@ -249,6 +257,7 @@ export class GlobalSettings {
           value: item.defaultValue,
           defaultValue: item.defaultValue,
           caption: item.caption,
+          choices: item.choices,
         };
       }
       return;
@@ -262,6 +271,7 @@ export class GlobalSettings {
         value: item.defaultValue,
         defaultValue: item.defaultValue,
         caption: item.caption,
+        choices: item.choices,
       };
     }
     this.groups[config.name] = {
@@ -273,3 +283,5 @@ export class GlobalSettings {
 };
 
 export const globalSettings = new GlobalSettings();
+
+registerBuildbotSettingsSingleton(globalSettings);

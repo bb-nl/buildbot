@@ -1,9 +1,9 @@
-@import "~bootstrap/scss/bootstrap";
-@import "~font-awesome/scss/font-awesome.scss";
+@import "bootstrap/scss/bootstrap";
 @import "animations.scss";
 @import "colors.scss";
 @import "mobile.scss";
 @import "guanlecoja.scss";
+@import "buildbot-ui/dist/style.css";
 
 // Dashboards which use SVG to draw contents such as waterfall may require
 //  setting  body height to 100vh. (100% of viewport height)
@@ -138,11 +138,6 @@ span:hover>.mouse-over-only  {display: inline;}
   color: #262626;
 }
 
-/* glyphicon to font awesome translation, for angular-bootstrap-multiselect */
-.glyphicon { font-family: 'FontAwesome'; }
-.glyphicon-ok:before { content: $fa-var-check; }
-.glyphicon-remove:before { content: $fa-var-times; }
-
 #root, .modal .modal-dialog {
   font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
   font-size: 14px;
@@ -152,5 +147,24 @@ span:hover>.mouse-over-only  {display: inline;}
 
   a:hover {
     text-decoration: none;
+  }
+
+  .modal-header,
+  .modal-body,
+  .modal-footer {
+    // The padding is increased so that scroll bars don't appear when using .row elements in modal. The padding
+    // is such that it's larger than the negative margin of .row.
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .btn-light {
+    background-color: #fff;
+    border-color: #ccc;
+  }
+
+  .btn-light:hover {
+    background-color: #e6e6e6;
+    border-color: #adadad;
   }
 }

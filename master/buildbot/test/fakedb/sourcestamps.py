@@ -54,15 +54,16 @@ class FakeSourceStampsComponent(FakeDBComponent):
         self.sourcestamps = {}
         self.patches = {}
 
-    def insertTestData(self, rows):
+    def insert_test_data(self, rows):
         for row in rows:
             if isinstance(row, Patch):
-                self.patches[row.id] = dict(
-                    patch_level=row.patchlevel,
-                    patch_body=base64.b64decode(row.patch_base64),
-                    patch_author=row.patch_author,
-                    patch_comment=row.patch_comment,
-                    patch_subdir=row.subdir)
+                self.patches[row.id] = {
+                    "patch_level": row.patchlevel,
+                    "patch_body": base64.b64decode(row.patch_base64),
+                    "patch_author": row.patch_author,
+                    "patch_comment": row.patch_comment,
+                    "patch_subdir": row.subdir
+                }
 
         for row in rows:
             if isinstance(row, SourceStamp):
@@ -98,19 +99,25 @@ class FakeSourceStampsComponent(FakeDBComponent):
             patchid = len(self.patches) + 1
             while patchid in self.patches:
                 patchid += 1
-            self.patches[patchid] = dict(
-                patch_level=patch_level,
-                patch_body=patch_body,
-                patch_subdir=patch_subdir,
-                patch_author=patch_author,
-                patch_comment=patch_comment
-            )
+            self.patches[patchid] = {
+                "patch_level": patch_level,
+                "patch_body": patch_body,
+                "patch_subdir": patch_subdir,
+                "patch_author": patch_author,
+                "patch_comment": patch_comment
+            }
         else:
             patchid = None
 
-        new_ssdict = dict(branch=branch, revision=revision, codebase=codebase,
-                          patchid=patchid, repository=repository, project=project,
-                          created_at=epoch2datetime(self.reactor.seconds()))
+        new_ssdict = {
+            "branch": branch,
+            "revision": revision,
+            "codebase": codebase,
+            "patchid": patchid,
+            "repository": repository,
+            "project": project,
+            "created_at": epoch2datetime(self.reactor.seconds())
+        }
         for id, ssdict in self.sourcestamps.items():
             keys = ['branch', 'revision', 'repository',
                     'codebase', 'project', 'patchid']
@@ -149,6 +156,17 @@ class FakeSourceStampsComponent(FakeDBComponent):
             return ssdict
         else:
             return None
+
+    @defer.inlineCallbacks
+    def get_sourcestamps_for_buildset(self, buildsetid):
+        bset = yield self.db.buildsets.getBuildset(buildsetid)
+        if bset is None:
+            return []
+
+        results = []
+        for ssid in bset["sourcestamps"]:
+            results.append((yield self.getSourceStamp(ssid)))
+        return results
 
     @defer.inlineCallbacks
     def getSourceStampsForBuild(self, buildid):

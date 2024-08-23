@@ -18,19 +18,16 @@
 import './BuildRequestSummary.scss';
 import {observer} from "mobx-react";
 import {Card} from "react-bootstrap";
-import {useDataAccessor, useDataApiQuery} from "../../data/ReactUtils";
-import {Buildrequest} from "../../data/classes/Buildrequest";
-import {Builder} from "../../data/classes/Builder";
-import BadgeStatus from "../BadgeStatus/BadgeStatus";
-import BuildSummary from "../BuildSummary/BuildSummary";
-import {Buildset} from "../../data/classes/Buildset";
+import {Builder, Buildrequest, Buildset, useDataAccessor, useDataApiQuery, SKIPPED, results2text} from "buildbot-data-js";
+import {BadgeStatus} from "buildbot-ui";
+import {BuildSummary} from "../BuildSummary/BuildSummary";
 import {Link} from "react-router-dom";
 
 type BuildRequestSummaryProps = {
   buildrequestid: string;
 }
 
-const BuildRequestSummary = observer(({buildrequestid}: BuildRequestSummaryProps) => {
+export const BuildRequestSummary = observer(({buildrequestid}: BuildRequestSummaryProps) => {
   const accessor = useDataAccessor([buildrequestid]);
 
   const buildRequestQuery = useDataApiQuery(
@@ -47,8 +44,12 @@ const BuildRequestSummary = observer(({buildrequestid}: BuildRequestSummaryProps
   const builder = builderQuery.getNthOrNull(0);
 
   const buildElements = builds.array.map(build => (
-    <BuildSummary build={build} condensed={true} parentBuild={null} parentRelationship={null}/>
+    <BuildSummary key={build.id} build={build} condensed={true} parentBuild={null}
+                  parentRelationship={null}/>
   ));
+
+  const isRequestSkipped = buildRequest?.results === SKIPPED;
+  const requestResultClass = isRequestSkipped ? "results_SKIPPED" : "results_PENDING";
 
   const renderBuildRequestDetails = () => {
     if (buildRequest === null) {
@@ -67,17 +68,19 @@ const BuildRequestSummary = observer(({buildrequestid}: BuildRequestSummaryProps
           | {reason}
         </div>
         <div className="flex-grow-1 text-right">
-          <span>waiting for available worker and locks</span>
-          <BadgeStatus className="results_PENDING">...</BadgeStatus>
+          {!isRequestSkipped ? <span>waiting for available worker and locks</span> : <></>}
+          <BadgeStatus className={requestResultClass}>
+            {results2text(buildRequest)}
+          </BadgeStatus>
         </div>
       </>
     );
   }
 
-  const renderPendingBuilds = () => {
+  const renderRequest = () => {
     return (
       <div>
-        <Card className="bb-build-request-summary-pending-panel results_PENDING">
+        <Card className={"bb-build-request-summary-pending-panel " + requestResultClass}>
           <Card.Header className="no-select">
             <div className="flex-row">
               {renderBuildRequestDetails()}
@@ -91,11 +94,8 @@ const BuildRequestSummary = observer(({buildrequestid}: BuildRequestSummaryProps
   return (
     <div className="bb-build-request-summary">
       <>
-        {buildElements}
-        {builds.array.length === 0 ? renderPendingBuilds() : <></>}
+        {builds.array.length > 0 ? buildElements : renderRequest()}
       </>
     </div>
   );
 });
-
-export default BuildRequestSummary;

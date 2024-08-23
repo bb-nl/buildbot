@@ -15,39 +15,52 @@
   Copyright Buildbot Team Members
 */
 
-import {action, observable} from "mobx";
+import {action, makeObservable, observable} from "mobx";
 
 export class ForceBuildfieldsState {
-  @observable value: string = '';
+  @observable value: any = undefined;
   @observable errors: string[] = [];
 
-  constructor(value: string) {
+  constructor(value: any) {
+    makeObservable(this);
+    this.setValue(value);
+  }
+
+  @action setValue(value: any) {
     this.value = value;
+  }
+
+  @action setErrors(errors: string[]) {
+    this.errors = errors;
+  }
+
+  @action pushError(error: string) {
+    this.errors.push(error);
   }
 }
 
 export class ForceBuildModalFieldsState {
   fields = observable.map<string, ForceBuildfieldsState>();
 
-  setupField(name: string, defaultValue: string) {
+  setupField(name: string, defaultValue: any) {
     if (!this.fields.has(name)) {
       this.createNewField(name, defaultValue);
     }
   }
 
-  @action createNewField(name: string, defaultValue: string) {
+  @action createNewField(name: string, defaultValue: any) {
     this.fields.set(name, new ForceBuildfieldsState(defaultValue));
   }
 
-  @action setValue(name: string, value: string) {
+  @action setValue(name: string, value: any) {
     const field = this.fields.get(name);
     if (field === undefined) {
       throw Error(`Field with name ${name} does not exist`)
     }
-    field.value = value;
+    field.setValue(value);
   }
 
-  getValue(name: string): string | null {
+  getValue(name: string): any | null {
     const field = this.fields.get(name);
     if (field === undefined) {
       return null;
@@ -56,7 +69,7 @@ export class ForceBuildModalFieldsState {
   }
 
   @action clearErrors() {
-    this.fields.forEach(e => { e.errors = []; });
+    this.fields.forEach(e => { e.setErrors([]); });
   }
 
   @action addError(name: string, error: string) {
@@ -64,6 +77,6 @@ export class ForceBuildModalFieldsState {
     if (field === undefined) {
       throw Error(`Filed with name ${name} does not exist`)
     }
-    field.errors.push(error);
+    field.pushError(error);
   }
 }

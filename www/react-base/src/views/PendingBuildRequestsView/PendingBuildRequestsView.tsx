@@ -16,101 +16,40 @@
 */
 
 import {observer} from "mobx-react";
-import {Table} from "react-bootstrap";
-import {useDataAccessor, useDataApiQuery} from "../../data/ReactUtils";
-import {Builder} from "../../data/classes/Builder";
-import {globalMenuSettings} from "../../plugins/GlobalMenuSettings";
-import {globalRoutes} from "../../plugins/GlobalRoutes";
-import {Link} from "react-router-dom";
-import {globalSettings} from "../../plugins/GlobalSettings";
-import {Buildrequest} from "../../data/classes/Buildrequest";
-import {dateFormat, durationFromNowFormat, useCurrentTime} from "../../util/Moment";
-import {getPropertyValueOrDefault} from "../../util/Properties";
-import BadgeRound from "../../components/BadgeRound/BadgeRound";
-import TableHeading from "../../components/TableHeading/TableHeading";
+import {
+  Buildrequest,
+  useDataAccessor,
+  useDataApiQuery
+} from "buildbot-data-js";
+import {buildbotGetSettings, buildbotSetupPlugin} from "buildbot-plugin-support";
+import {LoadingSpan} from "../../components/LoadingSpan/LoadingSpan";
+import {
+  PendingBuildRequestsTable
+} from "../../components/PendingBuildRequestsTable/PendingBuildRequestsTable";
+import {TableHeading} from "../../components/TableHeading/TableHeading";
 
-const PendingBuildRequestsView = observer(() => {
-  const now = useCurrentTime();
+export const PendingBuildRequestsView = observer(() => {
   const accessor = useDataAccessor([]);
 
-  const buildRequestFetchLimit = globalSettings.getIntegerSetting("BuildRequests.buildrequestFetchLimit");
+  const buildRequestFetchLimit = buildbotGetSettings().getIntegerSetting("BuildRequests.buildrequestFetchLimit");
   const buildRequestsQuery = useDataApiQuery(
     () => Buildrequest.getAll(accessor, {query: {
       limit: buildRequestFetchLimit,
-      order: '-submitted_at',
+      order: ['-priority', '-submitted_at'],
       claimed: false
     }}));
 
-  const propertiesQuery = useDataApiQuery(() =>
-    buildRequestsQuery.getRelatedProperties(br => br.getProperties()));
-  const buildersQuery = useDataApiQuery(() =>
-    buildRequestsQuery.getRelated(br => Builder.getAll(accessor, {id: br.builderid.toString()})));
-
-  const renderBuildRequests = () => {
-    return buildRequestsQuery.array.map(buildRequest => {
-      const builder = buildersQuery.getNthOfParentOrNull(buildRequest.id, 0);
-      const properties = propertiesQuery.getParentCollectionOrEmpty(buildRequest.id);
-
-      const propertiesElements = Array.from(properties.properties.entries()).map(([name, valueSource]) => {
-        return (
-          <li key={name}>{name} = {JSON.stringify(valueSource[0])}</li>
-        );
-      });
-
-      return (
-        <tr key={buildRequest.id}>
-          <td>
-            <Link to={`/buildrequests/${buildRequest.id}`}>
-              <BadgeRound className=''>{buildRequest.id.toString()}</BadgeRound>
-            </Link>
-          </td>
-          <td>
-            <Link to={`/builders/${buildRequest.builderid}`}>
-              <span>{builder !== null ? builder.name : "Loading ... "}</span>
-            </Link>
-          </td>
-          <td>
-            <span title={dateFormat(buildRequest.submitted_at)}>
-              {durationFromNowFormat(buildRequest.submitted_at, now)}
-            </span>
-          </td>
-          <td>
-            <span>
-              {getPropertyValueOrDefault(buildRequest.properties, "owner", "(none)")}
-            </span>
-          </td>
-          <td>
-            <ul>
-              {propertiesElements}
-            </ul>
-          </td>
-        </tr>
-      );
-    });
-  }
-
   const renderContents = () => {
     if (!buildRequestsQuery.resolved) {
-      return <span>Loading ...</span>
+      return <LoadingSpan/>;
     }
     if (buildRequestsQuery.array.length === 0) {
       return <span>None</span>
     }
 
     return (
-      <Table hover striped size="sm">
-        <tbody>
-          <tr>
-            <td width="100px">#</td>
-            <td width="150px">Builder</td>
-            <td width="150px">Submitted At</td>
-            <td width="150px">Owner</td>
-            <td width="150px">Properties</td>
-          </tr>
-          {renderBuildRequests()}
-        </tbody>
-      </Table>
-    )
+      <PendingBuildRequestsTable buildRequestsQuery={buildRequestsQuery}/>
+    );
   }
 
   return (
@@ -121,30 +60,29 @@ const PendingBuildRequestsView = observer(() => {
   );
 });
 
+buildbotSetupPlugin((reg) => {
+  reg.registerMenuGroup({
+    name: 'pendingbuildrequests',
+    parentName: 'builds',
+    caption: 'Pending Buildrequests',
+    order: null,
+    route: '/pendingbuildrequests',
+  });
 
-globalMenuSettings.addGroup({
-  name: 'pendingbuildrequests',
-  parentName: 'builds',
-  caption: 'Pending Buildrequests',
-  icon: null,
-  order: null,
-  route: '/pendingbuildrequests',
+  reg.registerRoute({
+    route: "pendingbuildrequests",
+    group: "builds",
+    element: () => <PendingBuildRequestsView/>,
+  });
+
+  reg.registerSettingGroup({
+    name: 'BuildRequests',
+    caption: 'Buildrequests page related settings',
+    items: [{
+      type: 'integer',
+      name: 'buildrequestFetchLimit',
+      caption: 'Maximum number of pending buildrequests to fetch',
+      defaultValue: 50
+    }]
+  });
 });
-
-globalRoutes.addRoute({
-  route: "pendingbuildrequests",
-  group: "builds",
-  element: () => <PendingBuildRequestsView/>,
-});
-
-globalSettings.addGroup({
-  name: 'BuildRequests',
-  caption: 'Buildrequests page related settings',
-  items: [{
-    type: 'integer',
-    name: 'buildrequestFetchLimit',
-    caption: 'Maximum number of pending buildrequests to fetch',
-    defaultValue: 50
-  }]});
-
-export default PendingBuildRequestsView;

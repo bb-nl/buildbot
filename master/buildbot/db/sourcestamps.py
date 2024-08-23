@@ -36,7 +36,6 @@ class SsList(list):
 
 
 class SourceStampsConnectorComponent(base.DBConnectorComponent):
-    # Documentation is in developer/database.rst
 
     @defer.inlineCallbacks
     def findSourceStampId(self, branch=None, revision=None, repository=None,
@@ -70,12 +69,13 @@ class SourceStampsConnectorComponent(base.DBConnectorComponent):
                 patch_body_bytes = unicode2bytes(patch_body)
                 patch_base64_bytes = base64.b64encode(patch_body_bytes)
                 ins = self.db.model.patches.insert()
-                r = conn.execute(ins, dict(
-                    patchlevel=patch_level,
-                    patch_base64=bytes2unicode(patch_base64_bytes),
-                    patch_author=patch_author,
-                    patch_comment=patch_comment,
-                    subdir=patch_subdir))
+                r = conn.execute(ins, {
+                    "patchlevel": patch_level,
+                    "patch_base64": bytes2unicode(patch_base64_bytes),
+                    "patch_author": patch_author,
+                    "patch_comment": patch_comment,
+                    "subdir": patch_subdir
+                })
                 patchid = r.inserted_primary_key[0]
             return patchid
         patchid = yield self.db.pool.do(thd)
@@ -102,7 +102,7 @@ class SourceStampsConnectorComponent(base.DBConnectorComponent):
     def getSourceStamp(self, ssid):
         def thd(conn):
             tbl = self.db.model.sourcestamps
-            q = tbl.select(whereclause=(tbl.c.id == ssid))
+            q = tbl.select(whereclause=tbl.c.id == ssid)
             res = conn.execute(q)
             row = res.fetchone()
             if not row:
@@ -110,6 +110,28 @@ class SourceStampsConnectorComponent(base.DBConnectorComponent):
             ssdict = self._rowToSsdict_thd(conn, row)
             res.close()
             return ssdict
+        return self.db.pool.do(thd)
+
+    # returns a Deferred that returns a value
+    def get_sourcestamps_for_buildset(self, buildsetid):
+        def thd(conn):
+            bsets_tbl = self.db.model.buildsets
+            bsss_tbl = self.db.model.buildset_sourcestamps
+            sstamps_tbl = self.db.model.sourcestamps
+
+            from_clause = bsets_tbl.join(
+                bsss_tbl, bsets_tbl.c.id == bsss_tbl.c.buildsetid
+            ).join(sstamps_tbl, bsss_tbl.c.sourcestampid == sstamps_tbl.c.id)
+
+            q = (
+                sa.select([sstamps_tbl])
+                .select_from(from_clause)
+                .where(bsets_tbl.c.id == buildsetid)
+            )
+
+            res = conn.execute(q)
+            return [self._rowToSsdict_thd(conn, row) for row in res.fetchall()]
+
         return self.db.pool.do(thd)
 
     # returns a Deferred that returns a value
@@ -164,7 +186,7 @@ class SourceStampsConnectorComponent(base.DBConnectorComponent):
         # fetch the patch, if necessary
         if patchid is not None:
             tbl = self.db.model.patches
-            q = tbl.select(whereclause=(tbl.c.id == patchid))
+            q = tbl.select(whereclause=tbl.c.id == patchid)
             res = conn.execute(q)
             row = res.fetchone()
             if row:

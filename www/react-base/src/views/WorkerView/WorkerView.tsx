@@ -15,18 +15,23 @@
   Copyright Buildbot Team Members
 */
 
+import {useState} from "react";
 import {observer} from "mobx-react";
-import {globalRoutes} from "../../plugins/GlobalRoutes";
-import {useDataAccessor, useDataApiQuery} from "../../data/ReactUtils";
-import {Builder} from "../../data/classes/Builder";
-import {Master} from "../../data/classes/Master";
-import {Worker} from "../../data/classes/Worker";
-import {Build} from "../../data/classes/Build";
+import {
+  Build,
+  Builder,
+  Master,
+  Worker,
+  useDataAccessor,
+  useDataApiQuery
+} from "buildbot-data-js";
 import {useParams} from "react-router-dom";
-import WorkersTable from "../../components/WorkersTable/WorkersTable";
-import BuildsTable from "../../components/BuildsTable/BuildsTable";
+import {buildbotSetupPlugin} from "buildbot-plugin-support";
+import {WorkersTable} from "../../components/WorkersTable/WorkersTable";
+import {BuildsTable} from "../../components/BuildsTable/BuildsTable";
+import {WorkerActionsModal} from "../../components/WorkerActionsModal/WorkerActionsModal";
 
-const WorkerView = observer(() => {
+export const WorkerView = observer(() => {
   const workerid = Number.parseInt(useParams<"workerid">().workerid ?? "");
   const accessor = useDataAccessor([workerid]);
 
@@ -35,28 +40,35 @@ const WorkerView = observer(() => {
   const mastersQuery = useDataApiQuery(() => Master.getAll(accessor));
   const buildsQuery = useDataApiQuery(() =>
     Build.getAll(accessor, {query: {
-        property: ["owners", "workername"],
+        property: ["owners", "workername", "branch", "revision"],
         workerid__eq: workerid,
         limit: 100,
         order: "-buildid",
       }
     }));
 
+  const [workerForActions, setWorkerForActions] = useState<null|Worker>(null);
+
   return (
     <div className="container">
       <WorkersTable workers={workersQuery.array} buildersQuery={buildersQuery}
                     mastersQuery={mastersQuery}
-                    buildsForWorker={null}/>
+                    buildsForWorker={null}
+                    onWorkerIconClick={(worker) => setWorkerForActions(worker)}/>
+      { workerForActions !== null
+        ? <WorkerActionsModal worker={workerForActions}
+                              onClose={() => setWorkerForActions(null)}/>
+        : <></>
+      }
       <BuildsTable builds={buildsQuery} builders={buildersQuery}/>
     </div>
   );
 });
 
-globalRoutes.addRoute({
-  route: "workers/:workerid",
-  group: "workers",
-  element: () => <WorkerView/>,
+buildbotSetupPlugin((reg) => {
+  reg.registerRoute({
+    route: "workers/:workerid",
+    group: "workers",
+    element: () => <WorkerView/>,
+  });
 });
-
-
-export default WorkerView;

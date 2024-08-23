@@ -16,28 +16,29 @@
 */
 
 import {observer} from "mobx-react";
+import {FaSpinner, FaStop} from "react-icons/fa";
+import {Fragment, useEffect, useState} from "react";
+import {buildbotSetupPlugin} from "buildbot-plugin-support";
 import {
+  Build,
+  Builder,
+  Buildrequest,
+  Buildset,
+  DataCollection,
+  Project,
   useDataAccessor,
   useDataApiQuery,
   useDataApiSinglePropertiesQuery
-} from "../../data/ReactUtils";
-import {Builder} from "../../data/classes/Builder";
-import {globalRoutes} from "../../plugins/GlobalRoutes";
+} from "buildbot-data-js";
 import {useNavigate, useParams, useSearchParams} from "react-router-dom";
-import {Buildrequest} from "../../data/classes/Buildrequest";
 import {Tab, Tabs} from "react-bootstrap";
-import RawData from "../../components/RawData/RawData";
-import {TopbarAction} from "../../components/TopbarActions/TopbarActions";
-import {useContext, useState} from "react";
-import {StoresContext} from "../../contexts/Stores";
-import {useTopbarActions} from "../../stores/TopbarActionsStore";
-import {useTopbarItems} from "../../stores/TopbarStore";
-import AlertNotification from "../../components/AlertNotification/AlertNotification";
-import {Build} from "../../data/classes/Build";
-import BuildSummary from "../../components/BuildSummary/BuildSummary";
-import PropertiesTable from "../../components/PropertiesTable/PropertiesTable";
-import {Buildset} from "../../data/classes/Buildset";
-import TableHeading from "../../components/TableHeading/TableHeading";
+import {TopbarAction, TopbarItem, useTopbarActions, useTopbarItems} from "buildbot-ui";
+import {RawData} from "../../components/RawData/RawData";
+import {AlertNotification} from "../../components/AlertNotification/AlertNotification";
+import {BuildSummary} from "../../components/BuildSummary/BuildSummary";
+import {PropertiesTable} from "../../components/PropertiesTable/PropertiesTable";
+import {TableHeading} from "../../components/TableHeading/TableHeading";
+import {buildTopbarItemsForBuilder} from "../../util/TopbarUtils";
 
 const buildTopbarActions = (builder: Builder | null,
                             buildRequest: Buildrequest | null,
@@ -52,13 +53,13 @@ const buildTopbarActions = (builder: Builder | null,
   if (isCancelling) {
     actions.push({
       caption: "Cancelling...",
-      icon: "spinner fa-spin",
+      icon: <FaSpinner/>,
       action: cancelBuildRequest
     });
   } else {
     actions.push({
       caption: "Cancel",
-      icon: "stop",
+      icon: <FaStop/>,
       action: cancelBuildRequest
     });
   }
@@ -66,7 +67,7 @@ const buildTopbarActions = (builder: Builder | null,
   return actions;
 }
 
-const BuildRequestView = observer(() => {
+export const BuildRequestView = observer(() => {
   const buildRequestId = Number.parseInt(useParams<"buildrequestid">().buildrequestid ?? "");
   const [searchParams] = useSearchParams();
   const redirectToBuild = searchParams.get("redirect_to_build") === "true";
@@ -75,14 +76,18 @@ const BuildRequestView = observer(() => {
 
   const navigate = useNavigate();
 
-  const stores = useContext(StoresContext);
-
   const buildRequestsQuery = useDataApiQuery(() =>
     Buildrequest.getAll(accessor, {id: buildRequestId.toString()}));
 
   const builderQuery = useDataApiQuery(() =>
     buildRequestsQuery.getRelated(buildRequest =>
       Builder.getAll(accessor, {id: buildRequest.builderid.toString()})));
+
+  const projectsQuery = useDataApiQuery(() => builderQuery.getRelated(builder => {
+    return builder.projectid === null
+      ? new DataCollection<Project>()
+      : Project.getAll(accessor, {id: builder.projectid.toString()})
+  }));
 
   const buildsetQuery = useDataApiQuery(() =>
     buildRequestsQuery.getRelated(buildRequest =>
@@ -93,6 +98,7 @@ const BuildRequestView = observer(() => {
 
   const buildRequest = buildRequestsQuery.getNthOrNull(0);
   const builder = builderQuery.getNthOrNull(0);
+  const project = projectsQuery.getNthOrNull(0);
   const buildset = buildsetQuery.getNthOrNull(0);
 
   const buildsetPropertiesQuery = useDataApiSinglePropertiesQuery(buildset,
@@ -101,18 +107,17 @@ const BuildRequestView = observer(() => {
   const [isCancelling, setIsCancelling] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  useTopbarItems(stores.topbar, [
-    {caption: "Builders", route: "/builders"},
+  useTopbarItems(buildTopbarItemsForBuilder(builder, project, [
     {caption: "Build requests", route: null},
     {caption: buildRequestId.toString(), route: `/buildrequests/${buildRequestId}`},
-  ]);
+  ]));
 
-  console.log(redirectToBuild, buildsQuery.array);
-
-  if (buildsQuery.array.length > 0 && redirectToBuild) {
-    const build = buildsQuery.getNthOrNull(0);
-    navigate(`/builders/${build?.builderid}/builds/${build?.number}`);
-  }
+  useEffect(() => {
+    if (buildsQuery.array.length > 0 && redirectToBuild) {
+      const build = buildsQuery.getNthOrNull(0);
+      navigate(`/builders/${build?.builderid}/builds/${build?.number}`);
+    }
+  }, [buildsQuery.array.length > 0]);
 
   const cancelBuildRequest = () => {
     if (isCancelling) {
@@ -133,19 +138,19 @@ const BuildRequestView = observer(() => {
   };
 
   const actions = buildTopbarActions(builder, buildRequest, isCancelling, cancelBuildRequest);
-  useTopbarActions(stores.topbarActions, actions);
+  useTopbarActions(actions);
 
   const buildTabs = buildsQuery.array.map(build => (
-    <Tab eventKey={`build-${build.number}`} title={`build ${build.number}`}>
+    <Tab key={build.id} eventKey={`build-${build.number}`} title={`build ${build.number}`}>
       <BuildSummary build={build} parentBuild={null} parentRelationship={null} condensed={false}/>
     </Tab>
   ));
 
   const buildRawData = buildsQuery.array.map(build => (
-    <>
+    <Fragment key={build.id}>
       <TableHeading>Build {build.number}</TableHeading>
       <RawData data={build.toObject()}/>
-    </>
+    </Fragment>
   ));
 
   return (
@@ -170,10 +175,10 @@ const BuildRequestView = observer(() => {
   );
 });
 
-globalRoutes.addRoute({
-  route: "buildrequests/:buildrequestid",
-  group: "builds",
-  element: () => <BuildRequestView/>,
+buildbotSetupPlugin((reg) => {
+  reg.registerRoute({
+    route: "buildrequests/:buildrequestid",
+    group: "builds",
+    element: () => <BuildRequestView/>,
+  });
 });
-
-export default BuildRequestView;

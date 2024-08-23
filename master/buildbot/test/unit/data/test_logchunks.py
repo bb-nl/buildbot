@@ -35,7 +35,7 @@ class LogChunkEndpointBase(endpoint.EndpointMixin, unittest.TestCase):
 
     def setUp(self):
         self.setUpEndpoint()
-        self.db.insertTestData([
+        self.db.insert_test_data([
             fakedb.Builder(id=77),
             fakedb.Worker(id=13, name='wrk'),
             fakedb.Master(id=88),
@@ -102,7 +102,8 @@ class LogChunkEndpointBase(endpoint.EndpointMixin, unittest.TestCase):
                              {'logid': logid, 'firstline': f, 'content': expContent})
 
         # truncated at EOF
-        f, length = len(expLines) - 2, len(expLines) + 10
+        f = len(expLines) - 2
+        length = len(expLines) + 10
         result_spec = resultspec.ResultSpec(offset=f, limit=length - f + 1)
         logchunk = yield self.callGet(path, resultSpec=result_spec)
         self.validateData(logchunk)

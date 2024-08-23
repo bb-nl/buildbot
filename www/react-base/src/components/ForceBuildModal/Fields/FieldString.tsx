@@ -15,29 +15,28 @@
   Copyright Buildbot Team Members
 */
 
-import {ForceSchedulerFieldString} from "../../../data/classes/Forcescheduler";
+import {ForceSchedulerFieldString} from "buildbot-data-js";
 import {ForceBuildModalFieldsState} from "../ForceBuildModalFieldsState";
 import {observer} from "mobx-react";
-import FieldBase from "./FieldBase";
+import {FieldBase} from "./FieldBase";
 
 type FieldStringProps = {
   field: ForceSchedulerFieldString;
   fieldsState: ForceBuildModalFieldsState;
 }
 
-const FieldString = observer(({field, fieldsState}: FieldStringProps) => {
-  const state = fieldsState.fields.get(field.name)!;
+export const FieldString = observer(({field, fieldsState}: FieldStringProps) => {
+  const state = fieldsState.fields.get(field.fullName)!;
 
   return (
     <FieldBase field={field} fieldsState={fieldsState}>
-      <label htmlFor={field.name} className="control-label col-sm-2">{field.label}</label>
+      <label htmlFor={field.fullName} className="control-label col-sm-10">{field.label}</label>
       <div className="col-sm-10">
-        <input type="text" id={field.name} autoComplete="on" className="form-control"
+        <input data-bb-test-id={`force-field-${field.fullName}`}
+               type="text" id={field.fullName} autoComplete="on" className="form-control"
                value={state.value}
-               onChange={event => fieldsState.setValue(field.name, event.target.value)}/>
+               onChange={event => fieldsState.setValue(field.fullName, event.target.value)}/>
       </div>
     </FieldBase>
   );
 });
-
-export default FieldString;

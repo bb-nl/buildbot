@@ -17,6 +17,10 @@ BuildStep
     All constructor arguments must be given as keyword arguments.
     Each constructor parameter is copied to the corresponding attribute.
 
+    All arguments passed to constructor of the ``BuildStep`` subclass being constructed are also copied to a separate internal storage.
+    This is used to create new instances in the same way the original instance is created without any interference that the constructors themselves may have.
+    The copying of arguments is done by overriding ``__new__``.
+
     .. py:attribute:: name
 
         The name of the step.
@@ -188,13 +192,17 @@ BuildStep
         If false, then the step is running.
         If true, the step is not running, or has been interrupted.
 
+    .. py:attribute:: timed_out
+
+        If ``True``, then one or more remote commands of the step timed out.
+
     A step can indicate its up-to-the-moment status using a short summary string.
     These methods allow step subclasses to produce such summaries.
 
     .. py:method:: updateSummary()
 
         Update the summary, calling :py:meth:`getCurrentSummary` or :py:meth:`getResultSummary` as appropriate.
-        New-style build steps should call this method any time the summary may have changed.
+        Build steps should call this method any time the summary may have changed.
         This method is debounced, so even calling it for every log line is acceptable.
 
     .. py:method:: getCurrentSummary()
@@ -205,7 +213,7 @@ BuildStep
         The dictionary can have a ``step`` key with a unicode value giving a summary for display with the step.
         This method is only called while the step is running.
 
-        New-style build steps should override this method to provide a more interesting summary than the default ``u"running"``.
+        Build steps may override this method to provide a more interesting summary than the default ``"running"``.
 
     .. py:method:: getResultSummary()
 
@@ -220,7 +228,7 @@ BuildStep
         This method is only called when the step is finished.
         The step's result is available in ``self.results`` at that time.
 
-        New-style build steps should override this method to provide a more interesting summary than the default, or to provide any build summary information.
+        Build steps may override this method to provide a more interesting summary than the default, or to provide any build summary information.
 
 
     .. py:method:: getBuildResultSummary()

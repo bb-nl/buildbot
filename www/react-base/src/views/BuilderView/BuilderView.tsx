@@ -16,24 +16,28 @@
 */
 
 import {observer} from "mobx-react";
-import {useContext, useState} from "react";
-import {useDataAccessor, useDataApiQuery} from "../../data/ReactUtils";
-import {globalRoutes} from "../../plugins/GlobalRoutes";
-import {Build} from "../../data/classes/Build";
-import {Builder} from "../../data/classes/Builder";
-import {useTopbarItems} from "../../stores/TopbarStore";
-import {StoresContext} from "../../contexts/Stores";
-import {Buildrequest} from "../../data/classes/Buildrequest";
-import BuildsTable from "../../components/BuildsTable/BuildsTable";
-import BuildRequestsTable from "../../components/BuildrequestsTable/BuildrequestsTable";
-import {Forcescheduler} from "../../data/classes/Forcescheduler";
-import {TopbarAction} from "../../components/TopbarActions/TopbarActions";
-import {useTopbarActions} from "../../stores/TopbarActionsStore";
+import {useState} from "react";
+import {buildbotSetupPlugin} from "buildbot-plugin-support";
+import {
+  Build,
+  Builder,
+  Buildrequest,
+  DataCollection, DataMultiCollection,
+  Forcescheduler,
+  Project,
+  useDataAccessor,
+  useDataApiQuery,
+  useDataApiSingleElementQuery
+} from "buildbot-data-js";
+import {TopbarAction, useTopbarItems, useTopbarActions, TopbarItem} from "buildbot-ui";
+import {BuildsTable} from "../../components/BuildsTable/BuildsTable";
+import {BuildRequestsTable} from "../../components/BuildrequestsTable/BuildrequestsTable";
 import {useNavigate, useParams} from "react-router-dom";
-import DataCollection from "../../data/DataCollection";
-import AlertNotification from "../../components/AlertNotification/AlertNotification";
-import ForceBuildModal from "../../components/ForceBuildModal/ForceBuildModal";
-import TableHeading from "../../components/TableHeading/TableHeading";
+import {AlertNotification} from "../../components/AlertNotification/AlertNotification";
+import {ForceBuildModal} from "../../components/ForceBuildModal/ForceBuildModal";
+import {TableHeading} from "../../components/TableHeading/TableHeading";
+import {FaStop, FaSpinner} from "react-icons/fa";
+import {buildTopbarItemsForBuilder} from "../../util/TopbarUtils";
 
 const anyCancellableBuilds = (builds: DataCollection<Build>,
                               buildrequests: DataCollection<Buildrequest>) => {
@@ -63,14 +67,14 @@ const buildTopbarActions = (builds: DataCollection<Build>,
     if (isCancelling) {
       actions.push({
         caption: "Cancelling...",
-        icon: "spinner fa-spin",
+        icon: <FaSpinner/>,
         action: cancelWholeQueue
       });
     } else {
       actions.push({
         caption: "Cancel whole queue",
         variant: "danger",
-        icon: "stop",
+        icon: <FaStop/>,
         action: cancelWholeQueue
       });
     }
@@ -87,11 +91,10 @@ const buildTopbarActions = (builds: DataCollection<Build>,
   return actions;
 }
 
-const BuilderView = observer(() => {
+export const BuilderView = observer(() => {
   const builderid = Number.parseInt(useParams<"builderid">().builderid ?? "");
   const navigate = useNavigate();
 
-  const stores = useContext(StoresContext);
   const accessor = useDataAccessor([builderid]);
 
   const numBuilds = 200;
@@ -100,7 +103,7 @@ const BuilderView = observer(() => {
   const buildsQuery = useDataApiQuery(() =>
     buildersQuery.getRelated(builder => Build.getAll(accessor, {query: {
         builderid: builder.builderid,
-        property: ["owners", "workername", "branch"],
+        property: ["owners", "workername", "branch", "revision"],
         limit: numBuilds,
         order: '-number'
       }
@@ -114,18 +117,22 @@ const BuilderView = observer(() => {
   const forceSchedulersQuery = useDataApiQuery(() =>
     buildersQuery.getRelated(builder => builder.getForceschedulers({query: {order: "name"}})));
 
+  const projectsQuery = useDataApiQuery(() => buildersQuery.getRelated(builder => {
+    return builder.projectid === null
+    ? new DataCollection<Project>()
+    : Project.getAll(accessor, {id: builder.projectid.toString()})
+  }));
+
   const builder = buildersQuery.getNthOrNull(0);
   const builds = buildsQuery.getParentCollectionOrEmpty(builderid.toString());
   const buildrequests = buildrequestsQuery.getParentCollectionOrEmpty(builderid.toString());
   const forceschedulers = forceSchedulersQuery.getParentCollectionOrEmpty(builderid.toString());
+  const project = projectsQuery.getNthOrNull(0);
 
   const [isCancelling, setIsCancelling] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  useTopbarItems(stores.topbar, builder === null ? [] : [
-    {caption: "Builders", route: "/builders"},
-    {caption: builder.name, route: `/builders/${builderid}`},
-  ]);
+  useTopbarItems(buildTopbarItemsForBuilder(builder, project, []));
 
   const cancelWholeQueue = () => {
     if (isCancelling) {
@@ -160,7 +167,7 @@ const BuilderView = observer(() => {
   const actions = buildTopbarActions(builds, buildrequests, forceschedulers, isCancelling,
     cancelWholeQueue, (sch) => setShownForceScheduler(sch));
 
-  useTopbarActions(stores.topbarActions, actions);
+  useTopbarActions(actions);
 
   const onForceBuildModalClose = (buildRequestNumber: string | null) => {
     if (buildRequestNumber === null) {
@@ -170,11 +177,25 @@ const BuilderView = observer(() => {
     }
   };
 
+  const renderDescription = (builder: Builder) => {
+    if (builder.description_format !== null && builder.description_html !== null) {
+      return (
+        <div><TableHeading>Description:</TableHeading>
+          <div dangerouslySetInnerHTML={{__html: builder.description_html}}/>
+        </div>
+      )
+    } else {
+      return (
+        <div><TableHeading>Description:</TableHeading>{builder.description}</div>
+      );
+    }
+  };
+
   return (
     <div className="container">
       <AlertNotification text={errorMsg}/>
       {builder !== null && builder.description !== null
-        ? <div><TableHeading>Description:</TableHeading>{builder.description}</div>
+        ? renderDescription(builder)
         : <></>
       }
       <BuildRequestsTable buildrequests={buildrequests}/>
@@ -190,10 +211,10 @@ const BuilderView = observer(() => {
   // TODO: display more than 100 builds
 });
 
-globalRoutes.addRoute({
-  route: "builders/:builderid",
-  group: null,
-  element: () => <BuilderView/>,
+buildbotSetupPlugin((reg) => {
+  reg.registerRoute({
+    route: "builders/:builderid",
+      group: null,
+      element: () => <BuilderView/>,
+  });
 });
-
-export default BuilderView;

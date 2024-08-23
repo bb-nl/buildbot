@@ -17,11 +17,30 @@
 
 import './Loginbar.scss';
 import {useContext} from "react";
-import {ConfigContext} from "../../contexts/Config";
+import {
+  FaCogs, FaSignInAlt, FaSignOutAlt, FaUser,
+  FaGithub, FaGitlab, FaBitbucket, FaGoogle, FaFacebook, FaLinkedin, FaMicrosoft
+} from "react-icons/fa";
 import {useLocation} from "react-router-dom";
 import {Nav, NavDropdown} from "react-bootstrap";
+import {ConfigContext} from "buildbot-ui";
 
-const Loginbar = () => {
+function getAuthIcon(faIcon: string) {
+  switch (faIcon) {
+    case "fa-github": return <FaGithub/>;
+    case "fa-gitlab": return <FaGitlab/>;
+    case "fa-bitbucket": return <FaBitbucket/>;
+    case "fa-google": return <FaGoogle/>;
+    case "fa-facebook": return <FaFacebook/>;
+    case "fa-linkedin": return <FaLinkedin/>;
+    case "fa-microsoft": return <FaMicrosoft/>;
+    case "": return <></>;
+    default:
+      return <FaCogs/>;
+  }
+}
+
+export const Loginbar = () => {
   const config = useContext(ConfigContext);
   const location = useLocation();
 
@@ -37,16 +56,14 @@ const Loginbar = () => {
     return (
       <Nav className="bb-loginbar-dropdown-nav">
         <NavDropdown title="Anonymous" id="bb-loginbar-dropdown">
-          <NavDropdown.Item>
-            <a href={"/auth/login?redirect=" + encodeURI(redirect)}>
-              {
-                config.auth.oauth2
-                  ? <span>
-                      <i className={"fa " + config.auth.fa_icon}></i>&nbsp;Login with {config.auth.name}
-                    </span>
-                  : <span><i className="fa fa-sign-in"></i>&nbsp;Login</span>
-              }
-            </a>
+          <NavDropdown.Item href={"/auth/login?redirect=" + encodeURI(redirect)}>
+            {
+              config.auth.oauth2
+                ? <span>
+                    {getAuthIcon(config.auth.fa_icon)}&nbsp;Login with {config.auth.name}
+                  </span>
+                : <span><FaSignInAlt/>&nbsp;Login</span>
+            }
           </NavDropdown.Item>
         </NavDropdown>
       </Nav>
@@ -62,7 +79,7 @@ const Loginbar = () => {
   const userDropdownHeader = (user.full_name || user.email)
     ? <>
         <NavDropdown.Header>
-          <i className="fa fa-user"/>
+          <FaUser/>
           <span>{config.user.full_name ?? ""} {config.user.email ?? ""}</span>
         </NavDropdown.Header>
         <NavDropdown.Divider/>
@@ -73,15 +90,11 @@ const Loginbar = () => {
     <Nav className="bb-loginbar-dropdown-nav">
       <NavDropdown title={dropdownToggle} id="bb-loginbar-dropdown">
         {userDropdownHeader}
-        <NavDropdown.Item>
-          <a href={"auth/logout?redirect=" + encodeURI(redirect)}>
-            <i className="fa fa-sign-out"></i>
-            Logout
-          </a>
+        <NavDropdown.Item href={"auth/logout?redirect=" + encodeURI(redirect)}>
+          <FaSignOutAlt/>
+          Logout
         </NavDropdown.Item>
       </NavDropdown>
     </Nav>
   );
 };
-
-export default Loginbar;

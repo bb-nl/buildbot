@@ -28,10 +28,6 @@ from buildbot.util import datetime2epoch
 from buildbot.util import epoch2datetime
 
 
-class BsDict(dict):
-    pass
-
-
 class BsProps(dict):
     pass
 
@@ -41,12 +37,11 @@ class AlreadyCompleteError(RuntimeError):
 
 
 class BuildsetsConnectorComponent(base.DBConnectorComponent):
-    # Documentation is in developer/db.rst
 
     @defer.inlineCallbacks
     def addBuildset(self, sourcestamps, reason, properties, builderids,
                     waited_for, external_idstring=None, submitted_at=None,
-                    parent_buildid=None, parent_relationship=None):
+                    parent_buildid=None, parent_relationship=None, priority=0):
         if submitted_at is not None:
             submitted_at = datetime2epoch(submitted_at)
         else:
@@ -73,11 +68,16 @@ class BuildsetsConnectorComponent(base.DBConnectorComponent):
             transaction = conn.begin()
 
             # insert the buildset itself
-            r = conn.execute(buildsets_tbl.insert(), dict(
-                submitted_at=submitted_at, reason=reason, complete=0,
-                complete_at=None, results=-1,
-                external_idstring=external_idstring,
-                parent_buildid=parent_buildid, parent_relationship=parent_relationship))
+            r = conn.execute(buildsets_tbl.insert(), {
+                "submitted_at": submitted_at,
+                "reason": reason,
+                "complete": 0,
+                "complete_at": None,
+                "results": -1,
+                "external_idstring": external_idstring,
+                "parent_buildid": parent_buildid,
+                "parent_relationship": parent_relationship
+            })
             bsid = r.inserted_primary_key[0]
 
             # add any properties
@@ -85,8 +85,7 @@ class BuildsetsConnectorComponent(base.DBConnectorComponent):
                 bs_props_tbl = self.db.model.buildset_properties
 
                 inserts = [
-                    dict(buildsetid=bsid, property_name=k,
-                         property_value=json.dumps([v, s]))
+                    {"buildsetid": bsid, "property_name": k, "property_value": json.dumps([v, s])}
                     for k, (v, s) in properties.items()]
                 for i in inserts:
                     self.checkLength(bs_props_tbl.c.property_name,
@@ -96,7 +95,7 @@ class BuildsetsConnectorComponent(base.DBConnectorComponent):
 
             # add sourcestamp ids
             r = conn.execute(self.db.model.buildset_sourcestamps.insert(),
-                             [dict(buildsetid=bsid, sourcestampid=ssid)
+                             [{"buildsetid": bsid, "sourcestampid": ssid}
                               for ssid in sourcestampids])
 
             # and finish with a build request for each builder.  Note that
@@ -107,12 +106,19 @@ class BuildsetsConnectorComponent(base.DBConnectorComponent):
             br_tbl = self.db.model.buildrequests
             ins = br_tbl.insert()
             for builderid in builderids:
-                r = conn.execute(ins,
-                                 dict(buildsetid=bsid, builderid=builderid, priority=0,
-                                      claimed_at=0, claimed_by_name=None,
-                                      claimed_by_incarnation=None, complete=0, results=-1,
-                                      submitted_at=submitted_at, complete_at=None,
-                                      waited_for=1 if waited_for else 0))
+                r = conn.execute(ins, {
+                    "buildsetid": bsid,
+                    "builderid": builderid,
+                    "priority": priority,
+                    "claimed_at": 0,
+                    "claimed_by_name": None,
+                    "claimed_by_incarnation": None,
+                    "complete": 0,
+                    "results": -1,
+                    "submitted_at": submitted_at,
+                    "complete_at": None,
+                    "waited_for": 1 if waited_for else 0
+                })
 
                 brids[builderid] = r.inserted_primary_key[0]
 
@@ -154,7 +160,7 @@ class BuildsetsConnectorComponent(base.DBConnectorComponent):
     def getBuildset(self, bsid):
         def thd(conn):
             bs_tbl = self.db.model.buildsets
-            q = bs_tbl.select(whereclause=(bs_tbl.c.id == bsid))
+            q = bs_tbl.select(whereclause=bs_tbl.c.id == bsid)
             res = conn.execute(q)
             row = res.fetchone()
             if not row:
@@ -216,7 +222,7 @@ class BuildsetsConnectorComponent(base.DBConnectorComponent):
             bsp_tbl = self.db.model.buildset_properties
             q = sa.select(
                 [bsp_tbl.c.property_name, bsp_tbl.c.property_value],
-                whereclause=(bsp_tbl.c.buildsetid == bsid))
+                whereclause=bsp_tbl.c.buildsetid == bsid)
             ret = []
             for row in conn.execute(q):
                 try:
@@ -235,12 +241,15 @@ class BuildsetsConnectorComponent(base.DBConnectorComponent):
                         conn.execute(sa.select([tbl.c.sourcestampid],
                                                (tbl.c.buildsetid == row.id))).fetchall()]
 
-        return BsDict(external_idstring=row.external_idstring,
-                      reason=row.reason,
-                      submitted_at=epoch2datetime(row.submitted_at),
-                      complete=bool(row.complete),
-                      complete_at=epoch2datetime(row.complete_at),
-                      results=row.results,
-                      bsid=row.id, sourcestamps=sourcestamps,
-                      parent_buildid=row.parent_buildid,
-                      parent_relationship=row.parent_relationship)
+        return {
+            "external_idstring": row.external_idstring,
+            "reason": row.reason,
+            "submitted_at": epoch2datetime(row.submitted_at),
+            "complete": bool(row.complete),
+            "complete_at": epoch2datetime(row.complete_at),
+            "results": row.results,
+            "bsid": row.id,
+            "sourcestamps": sourcestamps,
+            "parent_buildid": row.parent_buildid,
+            "parent_relationship": row.parent_relationship
+        }

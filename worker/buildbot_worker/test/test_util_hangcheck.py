@@ -15,10 +15,10 @@ from twisted.internet.task import Clock
 from twisted.python.failure import Failure
 from twisted.spread.pb import PBClientFactory
 from twisted.trial.unittest import TestCase
-from twisted.web.server import Site
 from twisted.web.static import Data
 
-from ..backports import SynchronousTestCase
+from buildbot_worker.test.util.site import SiteWithClose
+
 from ..util import HangCheckFactory
 from ..util._hangcheck import HangCheckProtocol
 
@@ -40,10 +40,14 @@ def assert_clock_idle(case, clock):
     )
 
 
-class HangCheckTests(SynchronousTestCase):
+class HangCheckTests(TestCase):
     """
     Tests for HangCheckProtocol.
     """
+
+    # On slower machines with high CPU oversubscription this test may take longer to run than
+    # the default timeout.
+    timeout = 20
 
     def test_disconnects(self):
         """
@@ -217,9 +221,9 @@ def connected_server_and_client(case, server_factory, client_factory):
 
 
 class EndToEndHangCheckTests(TestCase):
-    """
-    End to end test for HangCheckProtocol.
-    """
+    # On slower machines with high CPU oversubscription this test may take longer to run than
+    # the default timeout.
+    timeout = 20
 
     @defer.inlineCallbacks
     def test_http(self):
@@ -229,7 +233,7 @@ class EndToEndHangCheckTests(TestCase):
         """
         result = defer.Deferred()
 
-        site = Site(Data("", "text/plain"))
+        site = SiteWithClose(Data("", "text/plain"))
         client = HangCheckFactory(
             PBClientFactory(), lambda: result.callback(None))
 
@@ -248,7 +252,9 @@ class EndToEndHangCheckTests(TestCase):
         try:
             yield result
         except defer.CancelledError:
-            raise Exception('Timeout did not happen')
+            raise RuntimeError('Timeout did not happen')
         finally:
             d_connected.cancel()
             timer.cancel()
+
+        yield site.close_connections()

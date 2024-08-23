@@ -16,8 +16,7 @@
 import json
 import os
 import webbrowser
-
-import mock
+from unittest import mock
 
 import twisted
 from twisted.internet import defer
@@ -26,7 +25,6 @@ from twisted.internet import threads
 from twisted.python import failure
 from twisted.trial import unittest
 from twisted.web.resource import Resource
-from twisted.web.server import Site
 
 import buildbot
 from buildbot.process.properties import Secret
@@ -35,6 +33,7 @@ from buildbot.test.fake.secrets import FakeSecretStorage
 from buildbot.test.reactor import TestReactorMixin
 from buildbot.test.util import www
 from buildbot.test.util.config import ConfigErrorsMixin
+from buildbot.test.util.site import SiteWithClose
 from buildbot.util import bytes2unicode
 
 try:
@@ -211,10 +210,14 @@ class OAuth2Auth(TestReactorMixin, www.WwwTestMixin, ConfigErrorsMixin,
     def test_GoogleVerifyCode(self):
         requests.get.side_effect = []
         requests.post.side_effect = [
-            FakeResponse(dict(access_token="TOK3N"))]
-        self.googleAuth.get = mock.Mock(side_effect=[dict(
-            name="foo bar",
-            email="bar@foo", picture="http://pic")])
+            FakeResponse({"access_token": 'TOK3N'})]
+        self.googleAuth.get = mock.Mock(side_effect=[
+            {
+                "name": 'foo bar',
+                "email": 'bar@foo',
+                "picture": 'http://pic'
+            }
+        ])
         res = yield self.googleAuth.verifyCode("code!")
         self.assertEqual({'avatar_url': 'http://pic', 'email': 'bar@foo',
                           'full_name': 'foo bar', 'username': 'bar'}, res)
@@ -224,7 +227,7 @@ class OAuth2Auth(TestReactorMixin, www.WwwTestMixin, ConfigErrorsMixin,
         test = self
         requests.get.side_effect = []
         requests.post.side_effect = [
-            FakeResponse(dict(access_token="TOK3N"))]
+            FakeResponse({"access_token": 'TOK3N'})]
 
         def fake_get(self, ep, **kwargs):
             test.assertEqual(
@@ -234,18 +237,20 @@ class OAuth2Auth(TestReactorMixin, www.WwwTestMixin, ConfigErrorsMixin,
                     'User-Agent': f'buildbot/{buildbot.version}',
                 })
             if ep == '/user':
-                return dict(
-                    login="bar",
-                    name="foo bar",
-                    email="buzz@bar")
+                return {
+                    "login": 'bar',
+                    "name": 'foo bar',
+                    "email": 'buzz@bar'
+                }
             if ep == '/user/emails':
                 return [
                     {'email': 'buzz@bar', 'verified': True, 'primary': False},
-                    {'email': 'bar@foo', 'verified': True, 'primary': True}]
+                    {'email': 'bar@foo', 'verified': True, 'primary': True}
+                ]
             if ep == '/user/orgs':
                 return [
-                    dict(login="hello"),
-                    dict(login="grp"),
+                    {"login": 'hello'},
+                    {"login": 'grp'},
                 ]
             return None
         self.githubAuth.get = fake_get
@@ -260,7 +265,7 @@ class OAuth2Auth(TestReactorMixin, www.WwwTestMixin, ConfigErrorsMixin,
     def test_GithubVerifyCode_v4(self):
         requests.get.side_effect = []
         requests.post.side_effect = [
-            FakeResponse(dict(access_token="TOK3N"))]
+            FakeResponse({"access_token": 'TOK3N'})]
         self.githubAuth_v4.post = mock.Mock(side_effect=[
             {
                 'data': {
@@ -296,7 +301,7 @@ class OAuth2Auth(TestReactorMixin, www.WwwTestMixin, ConfigErrorsMixin,
     def test_GithubVerifyCode_v4_teams(self):
         requests.get.side_effect = []
         requests.post.side_effect = [
-            FakeResponse(dict(access_token="TOK3N"))]
+            FakeResponse({"access_token": 'TOK3N'})]
         self.githubAuth_v4_teams.post = mock.Mock(side_effect=[
             {
                 'data': {
@@ -408,7 +413,7 @@ class OAuth2Auth(TestReactorMixin, www.WwwTestMixin, ConfigErrorsMixin,
     def test_GitlabVerifyCode(self):
         requests.get.side_effect = []
         requests.post.side_effect = [
-            FakeResponse(dict(access_token="TOK3N"))]
+            FakeResponse({"access_token": 'TOK3N'})]
         self.gitlabAuth.get = mock.Mock(side_effect=[
             {  # /user
                 "name": "Foo Bar",
@@ -433,19 +438,23 @@ class OAuth2Auth(TestReactorMixin, www.WwwTestMixin, ConfigErrorsMixin,
     def test_BitbucketVerifyCode(self):
         requests.get.side_effect = []
         requests.post.side_effect = [
-            FakeResponse(dict(access_token="TOK3N"))]
+            FakeResponse({"access_token": 'TOK3N'})]
         self.bitbucketAuth.get = mock.Mock(side_effect=[
-            dict(  # /user
-                username="bar",
-                display_name="foo bar"),
-            dict(  # /user/emails
-                values=[
+            {"username": 'bar', "display_name": 'foo bar'},  # /user
+            {
+                "values":
+                [
                     {'email': 'buzz@bar', 'is_primary': False},
-                    {'email': 'bar@foo', 'is_primary': True}]),
-            dict(  # /workspaces?role=member
-                values=[
+                    {'email': 'bar@foo', 'is_primary': True}
+                ]
+            },  # /user/emails
+            {
+                "values":
+                [
                     {'slug': 'hello'},
-                    {'slug': 'grp'}])
+                    {'slug': 'grp'}
+                ]
+            }  # /workspaces?role=member
         ])
         res = yield self.bitbucketAuth.verifyCode("code!")
         self.assertEqual({'email': 'bar@foo',
@@ -548,6 +557,7 @@ class OAuth2AuthGitHubE2E(TestReactorMixin, www.WwwTestMixin,
 
     def tearDown(self):
         from twisted.internet.tcp import Server
+
         # browsers has the bad habit on not closing the persistent
         # connections, so we need to hack them away to make trial happy
         f = failure.Failure(Exception("test end"))
@@ -569,8 +579,7 @@ class OAuth2AuthGitHubE2E(TestReactorMixin, www.WwwTestMixin,
                 return (b"<html><script>setTimeout(close,1000)</script><body>WORKED: " +
                         info + b"</body></html>")
 
-        class MySite(Site):
-
+        class MySite(SiteWithClose):
             def makeSession(self):
                 uid = self._mkuid()
                 session = self.sessions[uid] = self.sessionFactory(self, uid)
@@ -584,13 +593,14 @@ class OAuth2AuthGitHubE2E(TestReactorMixin, www.WwwTestMixin,
         listener = reactor.listenTCP(5000, site)
 
         def thd():
-            res = requests.get('http://localhost:5000/auth/login')
+            res = requests.get('http://localhost:5000/auth/login', timeout=30)
             content = bytes2unicode(res.content)
             webbrowser.open(content)
         threads.deferToThread(thd)
         res = yield d
         yield listener.stopListening()
         yield site.stopFactory()
+        yield site.close_connections()
 
         self.assertIn("full_name", res)
         self.assertIn("email", res)

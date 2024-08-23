@@ -17,24 +17,26 @@
 
 import './HomeView.scss';
 import {observer} from "mobx-react";
-import {useDataAccessor, useDataApiQuery} from "../../data/ReactUtils";
+import {FaHome} from "react-icons/fa";
+import {buildbotGetSettings, buildbotSetupPlugin} from "buildbot-plugin-support";
+import {
+  Build,
+  Builder,
+  DataCollection,
+  useDataAccessor,
+  useDataApiQuery
+} from "buildbot-data-js";
 import {useContext} from "react";
-import {Config, ConfigContext} from "../../contexts/Config";
-import {globalMenuSettings} from "../../plugins/GlobalMenuSettings";
-import {Build} from "../../data/classes/Build";
-import {Builder} from "../../data/classes/Builder";
-import DataCollection from "../../data/DataCollection";
-import BuildSticker from "../../components/BuildSticker/BuildSticker";
+import {Config, ConfigContext} from "buildbot-ui";
+import {BuildSticker} from "../../components/BuildSticker/BuildSticker";
 import {Link} from "react-router-dom";
-import {globalRoutes} from "../../plugins/GlobalRoutes";
-import {globalSettings} from "../../plugins/GlobalSettings";
 import {Card} from "react-bootstrap";
-import TableHeading from "../../components/TableHeading/TableHeading";
+import {TableHeading} from "../../components/TableHeading/TableHeading";
 
 
 function maybeShowUrlWarning(location: Location, config: Config) {
   const colonAndPort = location.port === '' ? '' : `:${location.port}`;
-  const urlWithNoFragment = `${location.protocol}://${location.hostname}${colonAndPort}${location.pathname}`;
+  const urlWithNoFragment = `${location.protocol}//${location.hostname}${colonAndPort}${location.pathname}`;
   if (urlWithNoFragment === config.buildbotURL || config.isProxy === true) {
     return <></>;
   }
@@ -61,8 +63,8 @@ function computeBuildsByBuilder(builders: DataCollection<Builder>,
   const buildsByBuilder: BuildsByBuilder = {};
   for (const build of recentBuilds.array) {
     const builderid = build.builderid.toString();
-    if (builderid in builders.byId) {
-      const builder = builders.byId[builderid];
+    const builder = builders.byId.get(builderid);
+    if (builder !== undefined) {
       if (!(builderid in buildsByBuilder)) {
         buildsByBuilder[builderid] = {
           builder: builder,
@@ -76,14 +78,14 @@ function computeBuildsByBuilder(builders: DataCollection<Builder>,
   return buildsByBuilder;
 }
 
-const HomeView = observer(() => {
+export const HomeView = observer(() => {
   const config = useContext(ConfigContext);
   const accessor = useDataAccessor([]);
 
   const buildsRunning = useDataApiQuery(
     () => Build.getAll(accessor, {query: {order: '-started_at', complete: false}}));
 
-  const maxRecentBuilds = globalSettings.getIntegerSetting("Home.max_recent_builds");
+  const maxRecentBuilds = buildbotGetSettings().getIntegerSetting("Home.max_recent_builds");
 
   const recentBuilds = useDataApiQuery(
     () => Build.getAll(accessor, {query: {order: '-buildid', complete: true,
@@ -108,12 +110,12 @@ const HomeView = observer(() => {
               {
                 buildsRunning.array
                   .filter(build => build.complete === false &&
-                    build.builderid.toString() in builders.byId)
+                    builders.byId.has(build.builderid.toString()))
                   .map(build => {
                     return (
                       <li key={`${build.builderid}-${build.id}`} className="unstyled">
                         <BuildSticker build={build}
-                                      builder={builders.byId[build.builderid.toString()]}/>
+                                      builder={builders.byId.get(build.builderid.toString())!}/>
                       </li>
                     )
                   })
@@ -157,29 +159,29 @@ const HomeView = observer(() => {
   )
 });
 
-globalMenuSettings.addGroup({
-  name: 'home',
-  caption: 'Home',
-  icon: 'home',
-  order: 1,
-  route: '/',
-  parentName: null,
+buildbotSetupPlugin((reg) => {
+  reg.registerMenuGroup({
+    name: 'home',
+    caption: 'Home',
+    icon: <FaHome/>,
+    order: 1,
+    route: '/',
+    parentName: null,
+  });
+
+  reg.registerRoute({
+    route: "/",
+    group: "home",
+    element: () => <HomeView/>,
+  });
+
+  reg.registerSettingGroup({
+    name: 'Home',
+    caption: 'Home page related settings',
+    items: [{
+      type: 'integer',
+      name: 'max_recent_builds',
+      caption: 'Max recent builds',
+      defaultValue: 20
+    }]});
 });
-
-globalRoutes.addRoute({
-  route: "/",
-  group: "home",
-  element: () => <HomeView/>,
-});
-
-globalSettings.addGroup({
-  name: 'Home',
-  caption: 'Home page related settings',
-  items: [{
-    type: 'integer',
-    name: 'max_recent_builds',
-    caption: 'Max recent builds',
-    defaultValue: 20
-  }]});
-
-export default HomeView;

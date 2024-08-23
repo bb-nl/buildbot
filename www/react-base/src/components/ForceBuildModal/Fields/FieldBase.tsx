@@ -15,7 +15,7 @@
   Copyright Buildbot Team Members
 */
 
-import {ForceSchedulerFieldBoolean} from "../../../data/classes/Forcescheduler";
+import {ForceSchedulerFieldBoolean} from "buildbot-data-js";
 import {ForceBuildModalFieldsState} from "../ForceBuildModalFieldsState";
 import {observer} from "mobx-react";
 
@@ -25,8 +25,8 @@ type FieldBaseProps = {
   children: JSX.Element | JSX.Element[] | string;
 }
 
-const FieldBase = observer(({field, fieldsState, children}: FieldBaseProps) => {
-  const state = fieldsState.fields.get(field.name)!;
+export const FieldBase = observer(({field, fieldsState, children}: FieldBaseProps) => {
+  const state = fieldsState.fields.get(field.fullName)!;
 
   let classNames = "form-group";
   if (state.errors.length > 0) {
@@ -53,5 +53,3 @@ const FieldBase = observer(({field, fieldsState, children}: FieldBaseProps) => {
     </div>
   );
 });
-
-export default FieldBase;

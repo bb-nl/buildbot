@@ -16,35 +16,35 @@
 */
 
 import {observer} from "mobx-react";
+import {buildbotGetSettings, buildbotSetupPlugin} from "buildbot-plugin-support";
 import {
+  Builder,
+  Change,
+  DataCollection,
   useDataAccessor,
   useDataApiDynamicQuery,
   useDataApiQuery,
   useDataApiSingleElementQuery
-} from "../../data/ReactUtils";
-import {globalRoutes} from "../../plugins/GlobalRoutes";
-import {globalSettings} from "../../plugins/GlobalSettings";
-import {Change} from "../../data/classes/Change";
+} from "buildbot-data-js";
 import {useParams} from "react-router-dom";
 import {useState} from "react";
-import DataCollection from "../../data/DataCollection";
-import {Builder} from "../../data/classes/Builder";
-import ChangeDetails from "../../components/ChangeDetails/ChangeDetails";
-import BuildsTable from "../../components/BuildsTable/BuildsTable";
+import {ChangeDetails} from "buildbot-ui";
+import {BuildsTable} from "../../components/BuildsTable/BuildsTable";
+import {LoadingDiv} from "../../components/LoadingDiv/LoadingDiv";
 
 
-const ChangeBuildsView = observer(() => {
+export const ChangeBuildsView = observer(() => {
   const changeid = Number.parseInt(useParams<"changeid">().changeid ?? "");
 
   const accessor = useDataAccessor([changeid]);
-  const buildsFetchLimit = globalSettings.getIntegerSetting('ChangeBuilds.buildsFetchLimit');
+  const buildsFetchLimit = buildbotGetSettings().getIntegerSetting('ChangeBuilds.buildsFetchLimit');
 
   const changeQuery = useDataApiQuery(() => Change.getAll(accessor, {id: changeid.toString()}));
   const change = changeQuery.getNthOrNull(0);
 
   const buildsQuery = useDataApiSingleElementQuery(change,
     c => c.getBuilds({query: {
-        property: ["owners", "workername"],
+        property: ["owners", "workername", "branch", "revision"],
         limit: buildsFetchLimit
       }}));
 
@@ -66,30 +66,31 @@ const ChangeBuildsView = observer(() => {
       { change !== null
         ? <ChangeDetails change={change} compact={false}
                          showDetails={showDetails} setShowDetails={setShowDetails}/>
-        : <div>Loading... </div>
+        : <LoadingDiv/>
       }
       { buildsQuery.array.length > 0
         ? <BuildsTable builds={buildsQuery} builders={buildersQuery}/>
-        : <div>Loading... </div>
+        : <LoadingDiv/>
       }
     </div>
   );
 });
 
-globalRoutes.addRoute({
-  route: "changes/:changeid",
-  group: null,
-  element: () => <ChangeBuildsView/>,
+buildbotSetupPlugin((reg) => {
+  reg.registerRoute({
+    route: "changes/:changeid",
+    group: null,
+    element: () => <ChangeBuildsView/>,
+  });
+
+  reg.registerSettingGroup({
+    name:'ChangeBuilds',
+    caption: 'ChangeBuilds page related settings',
+    items:[{
+      type: 'integer',
+      name: 'buildsFetchLimit',
+      caption: 'Maximum number of builds to fetch for the selected change',
+      defaultValue: 10
+    }]
+  });
 });
-
-globalSettings.addGroup({
-  name:'ChangeBuilds',
-  caption: 'ChangeBuilds page related settings',
-  items:[{
-    type: 'integer',
-    name: 'buildsFetchLimit',
-    caption: 'Maximum number of builds to fetch for the selected change',
-    defaultValue: 10
-  }]});
-
-export default ChangeBuildsView;

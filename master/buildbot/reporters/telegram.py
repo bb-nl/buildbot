@@ -515,8 +515,7 @@ class TelegramContact(Contact):
                                               **params)
                     except CollectedValidationError as e:
                         raise ValueError(e.errors) from e
-                    else:
-                        self.send("Force build successfully requested.")
+                    self.send("Force build successfully requested.")
                     return
 
             except (IndexError, ValueError) as e:
@@ -539,7 +538,9 @@ class TelegramContact(Contact):
                         msg += f"\n{field['label']}"
                     else:
                         field_name = field['fullName']
-                        value = params.get(field_name, field['default']).strip()
+                        value = params.get(field_name, field['default'])
+                        if isinstance(value, str):
+                            value = value.strip()
                         msg += f"\n    {field['label']} `{value}`"
                         if value:
                             key = "Change "
@@ -685,9 +686,13 @@ class TelegramStatusBot(StatusBot):
             try:
                 data = self.query_cache[int(data)]
             except ValueError:
-                text, data, notify = data, {}, None
+                text = data
+                data = {}
+                notify = None
             except KeyError:
-                text, data, notify = None, {}, "Sorry, button is no longer valid!"
+                text = None
+                data = {}
+                notify = "Sorry, button is no longer valid!"
                 if original_message:
                     try:
                         self.edit_keyboard(
@@ -704,7 +709,9 @@ class TelegramStatusBot(StatusBot):
                     except KeyError:
                         notify = None
                 else:
-                    text, data, notify = data, {}, None
+                    text = data
+                    data = {}
+                    notify = None
             data['tquery'] = query
             self.answer_query(query['id'], notify)
             message = {
@@ -728,7 +735,8 @@ class TelegramStatusBot(StatusBot):
 
         contact = self.getContact(user=user, channel=chat)
         data['tmessage'] = message
-        template, contact.template = contact.template, None
+        template = contact.template
+        contact.template = None
         if text.startswith(self.commandPrefix):
             result = yield contact.handleMessage(text, **data)
         else:
@@ -768,9 +776,9 @@ class TelegramStatusBot(StatusBot):
 
     @defer.inlineCallbacks
     def answer_query(self, query_id, notify=None):
-        params = dict(callback_query_id=query_id)
+        params = {"callback_query_id": query_id}
         if notify is not None:
-            params.update(dict(text=notify))
+            params.update({"text": notify})
         return (yield self.post('/answerCallbackQuery', json=params))
 
     @defer.inlineCallbacks
@@ -781,7 +789,7 @@ class TelegramStatusBot(StatusBot):
 
         message = message.strip()
         while message:
-            params = dict(chat_id=chat)
+            params = {"chat_id": chat}
             if parse_mode is not None:
                 params['parse_mode'] = parse_mode
             if reply_to_message_id is not None:
@@ -789,11 +797,13 @@ class TelegramStatusBot(StatusBot):
                 reply_to_message_id = None  # we only mark first message as a reply
 
             if len(message) <= 4096:
-                params['text'], message = message, None
+                params['text'] = message
+                message = None
             else:
                 n = message[:4096].rfind('\n')
                 n = n + 1 if n != -1 else 4096
-                params['text'], message = message[:n].rstrip(), message[n:].lstrip()
+                params['text'] = message[:n].rstrip()
+                message = message[n:].lstrip()
 
             if not message and reply_markup is not None:
                 params['reply_markup'] = reply_markup
@@ -806,7 +816,7 @@ class TelegramStatusBot(StatusBot):
 
     @defer.inlineCallbacks
     def edit_message(self, chat, msg, message, parse_mode='Markdown', **kwargs):
-        params = dict(chat_id=chat, message_id=msg, text=message)
+        params = {"chat_id": chat, "message_id": msg, "text": message}
         if parse_mode is not None:
             params['parse_mode'] = parse_mode
         params.update(kwargs)
@@ -814,19 +824,19 @@ class TelegramStatusBot(StatusBot):
 
     @defer.inlineCallbacks
     def edit_keyboard(self, chat, msg, keyboard=None):
-        params = dict(chat_id=chat, message_id=msg)
+        params = {"chat_id": chat, "message_id": msg}
         if keyboard is not None:
             params['reply_markup'] = {'inline_keyboard': keyboard}
         return (yield self.post('/editMessageReplyMarkup', json=params))
 
     @defer.inlineCallbacks
     def delete_message(self, chat, msg):
-        params = dict(chat_id=chat, message_id=msg)
+        params = {"chat_id": chat, "message_id": msg}
         return (yield self.post('/deleteMessage', json=params))
 
     @defer.inlineCallbacks
     def send_sticker(self, chat, sticker, **kwargs):
-        params = dict(chat_id=chat, sticker=sticker)
+        params = {"chat_id": chat, "sticker": sticker}
         params.update(kwargs)
         return (yield self.post('/sendSticker', json=params))
 
@@ -868,12 +878,12 @@ class TelegramWebhookBot(TelegramStatusBot):
     def set_webhook(self, url, certificate=None):
         if not certificate:
             self.log(f"Setting up webhook to: {url}")
-            yield self.post('/setWebhook', json=dict(url=url))
+            yield self.post('/setWebhook', json={"url": url})
         else:
             self.log(f"Setting up webhook to: {url} (custom certificate)")
             certificate = io.BytesIO(unicode2bytes(certificate))
-            yield self.post('/setWebhook', data=dict(url=url),
-                            files=dict(certificate=certificate))
+            yield self.post('/setWebhook', data={"url": url},
+                            files={"certificate": certificate})
 
 
 class TelegramPollingBot(TelegramStatusBot):

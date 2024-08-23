@@ -16,34 +16,39 @@
 */
 
 import {Table} from "react-bootstrap";
-import {Builder} from "../../data/classes/Builder";
-import {Master} from "../../data/classes/Master";
-import {Worker} from "../../data/classes/Worker";
-import {Build} from "../../data/classes/Build";
+import {FaPause, FaRegSmile, FaTimes} from "react-icons/fa";
+import {FaStop} from "react-icons/fa";
+import {Build, Builder, DataCollection, Master, Worker} from "buildbot-data-js";
 import {Link} from "react-router-dom";
-import DataCollection from "../../data/DataCollection";
-import BuildLinkWithSummaryTooltip
-  from "../../components/BuildLinkWithSummaryTooltip/BuildLinkWithSummaryTooltip";
+import {BadgeRound, BuildLinkWithSummaryTooltip} from "buildbot-ui";
 import {observer} from "mobx-react";
-import BadgeRound from "../BadgeRound/BadgeRound";
 
-export const getWorkerStatusIcon = (worker: Worker) => {
+export const getWorkerStatusIcon = (worker: Worker, onClick: () => void) => {
   if (worker.paused) {
     return (
-      <i title="paused" className="fa fa-pause">&nbsp;</i>
+      <FaPause title="paused" onClick={onClick}>&nbsp;</FaPause>
     );
   }
   if (worker.graceful) {
     return (
-      <i title="graceful shutdown" className="fa fa-stop"></i>
+      <FaStop title="graceful shutdown" onClick={onClick}/>
     );
   }
   if (worker.connected_to.length > 0) {
     return (
-      <i className="fa fa-smile-o"></i>
+      <FaRegSmile onClick={onClick}/>
     );
   }
   return (<></>);
+}
+
+const anyWorkerPaused = (workers: Worker[]) => {
+  for (let w of workers) {
+    if (w.paused) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export const getWorkerInfoNamesToDisplay = (workers: Worker[]) => {
@@ -64,95 +69,109 @@ export type WorkersTableProps = {
   buildersQuery: DataCollection<Builder>;
   mastersQuery: DataCollection<Master>;
   buildsForWorker: {[workername: string]: Build[]} | null;
+  onWorkerIconClick: (worker: Worker) => void;
 };
 
-const WorkersTable = observer(({workers, buildersQuery, mastersQuery,
-                                buildsForWorker}: WorkersTableProps) => {
+export const WorkersTable = observer(({workers, buildersQuery, mastersQuery,
+                                       buildsForWorker, onWorkerIconClick}: WorkersTableProps) => {
   const workerInfoNamesToDisplay = getWorkerInfoNamesToDisplay(workers);
+
+  const renderConnectedMasters = (worker: Worker) => {
+    if (worker.connected_to.length === 0) {
+      return (
+        <div key="disconnected">
+          <FaTimes title="disconnected" className="text-danger"/>
+        </div>
+      );
+    }
+
+    return worker.connected_to.map(connectedMaster => {
+      const masterid = connectedMaster.masterid;
+      const master = mastersQuery.getByIdOrNull(masterid.toString());
+      return (
+        <div key={`master-${masterid}`}>
+          <Link to={`/masters/${masterid}`}>
+            <BadgeRound title={master !== null ? master.name : ""} className="results_SUCCESS">
+              {masterid.toString()}
+            </BadgeRound>
+          </Link>
+        </div>
+      );
+    });
+  }
+
+  const renderWorkerRecentBuilds = (worker: Worker) => {
+    if (buildsForWorker === null) {
+      return <></>;
+    }
+    return buildsForWorker[worker.name].map(build => {
+      const builder = buildersQuery.getByIdOrNull(build.builderid.toString());
+
+      return (
+        <BuildLinkWithSummaryTooltip key={build.id} build={build} builder={builder}/>
+      );
+    })
+  }
+
+  const renderWorkerInfos = (worker: Worker) => {
+    return workerInfoNamesToDisplay.map(name => {
+      let info = worker.workerinfo[name];
+      if (info === undefined) {
+        info = '';
+      }
+
+      return (
+        <td key={"info-" + name}>
+          {name === 'access_uri'
+            ? <a href={info}>{info}</a>
+            : <>{info}</>
+          }
+        </td>
+      );
+    });
+  }
+
+  const renderPauseReason = (worker: Worker, displayPauseReason: boolean) => {
+    if (!displayPauseReason) {
+      return <></>;
+    }
+    return (
+      <td key="worker-paused">
+        {worker.paused ? worker.pause_reason : ""}
+      </td>
+    );
+  }
+
+  const renderWorkerRow = (worker: Worker, displayPauseReason: boolean) => {
+    return (
+      <tr key={worker.name}>
+        <td key="state">{getWorkerStatusIcon(worker, () => onWorkerIconClick(worker))}</td>
+        {renderPauseReason(worker, displayPauseReason)}
+        <td key="masters">{renderConnectedMasters(worker)}</td>
+        <td key="name"><Link to={`/workers/${worker.workerid}`}>{worker.name}</Link></td>
+        { buildsForWorker === null ? <></> : <td key="builds">{renderWorkerRecentBuilds(worker)}</td> }
+        {renderWorkerInfos(worker)}
+      </tr>
+    );
+  }
+
+  const displayPauseReason = anyWorkerPaused(workers);
 
   return (
     <Table hover striped size="sm">
       <thead>
       <tr>
-        <th>State</th>
-        <th>Masters</th>
-        <th>WorkerName</th>
+        <th key="state">State</th>
+        { displayPauseReason ? <th key="pause-reason">Pause reason</th> : <></> }
+        <th key="masters">Masters</th>
+        <th key="name">WorkerName</th>
         { buildsForWorker === null ? <></> : <th key="builds">Recent Builds</th> }
         { workerInfoNamesToDisplay.map(name => <th key={"info-" + name}>{name}</th>) }
       </tr>
       </thead>
       <tbody>
-      {
-        workers
-          .map(worker => {
-            // TODO: actions
-            return (
-              <tr key={worker.name}>
-                <td>{getWorkerStatusIcon(worker)}</td>
-                <td>
-                  <div>
-                    {
-                      worker.connected_to.length === 0
-                        ? <i title="disconnected" className="fa fa-times text-danger"></i>
-                        : <></>
-                    }
-                  </div>
-                  {
-                    worker.connected_to.map(connectedMaster => {
-                      const masterid = connectedMaster.masterid;
-                      const master = mastersQuery.getByIdOrNull(masterid.toString());
-                      return (
-                        <div key={masterid}>
-                          <Link to={`/masters/${masterid}`}>
-                            <BadgeRound title={master !== null ? master.name : ""} className="results_SUCCESS">
-                              {masterid.toString()}
-                            </BadgeRound>
-                          </Link>
-                        </div>
-                      );
-                    })
-                  }
-                </td>
-                <td><Link to={`/workers/${worker.workerid}`}>{worker.name}</Link></td>
-                {
-                  buildsForWorker === null
-                  ? <></>
-                  : <td key="builds">
-                      {
-                        buildsForWorker[worker.name].map(build => {
-                          const builder = buildersQuery.getByIdOrNull(build.builderid.toString());
-
-                          return (
-                            <BuildLinkWithSummaryTooltip build={build} builder={builder}/>
-                          );
-                        })
-                      }
-                    </td>
-                }
-                {
-                  workerInfoNamesToDisplay.map(name => {
-                    let info = worker.workerinfo[name];
-                    if (info === undefined) {
-                      info = '';
-                    }
-
-                    return (
-                      <td key={"info-" + name}>
-                        {name === 'access_uri'
-                          ? <a href={info}>{info}</a>
-                          : <>{info}</>
-                        }
-                      </td>
-                    );
-                  })
-                }
-              </tr>
-            );
-          })
-      }
+        {workers.map(worker => renderWorkerRow(worker, displayPauseReason))}
       </tbody>
     </Table>
   );
 });
-
-export default WorkersTable;

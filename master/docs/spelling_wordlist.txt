@@ -106,9 +106,11 @@ Buildmaster
 buildmasters
 buildnumber
 buildrequest
+buildrequestid
 buildrequests
 buildset
 Buildset
+buildsetid
 buildsetids
 buildsets
 Buildsets
@@ -324,6 +326,7 @@ Filename
 filenames
 Filenames
 filesystem
+filesystems
 Filesystem
 Firefox
 fn
@@ -450,7 +453,7 @@ Json
 jsonable
 JUnit
 kB
-Keepalive
+keepalive
 keepalives
 kerberos
 Kerberos
@@ -587,6 +590,7 @@ offline
 ok
 Ok
 online
+onlyIfChanged
 optimiselogs
 org
 os
@@ -671,6 +675,7 @@ pythonic
 Pythonic
 pywin
 qcow
+qemu
 qmail
 queried
 queuedir

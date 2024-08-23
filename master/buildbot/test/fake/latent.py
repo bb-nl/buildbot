@@ -56,6 +56,7 @@ class LatentController(SeverWorkerConnectionMixin):
                  starts_without_substantiate=None, **kwargs):
         self.case = case
         self.build_wait_timeout = build_wait_timeout
+        self.has_crashed = False
         self.worker = ControllableLatentWorker(name, self, **kwargs)
         self.remote_worker = None
 
@@ -68,6 +69,9 @@ class LatentController(SeverWorkerConnectionMixin):
         self.auto_start_flag = False
         self.auto_connect_worker = True
         self.auto_disconnect_worker = True
+
+        self._start_deferred = None
+        self._stop_deferred = None
 
         self.kind = kind
         self._started_kind = None
@@ -97,7 +101,8 @@ class LatentController(SeverWorkerConnectionMixin):
     @defer.inlineCallbacks
     def start_instance(self, result):
         yield self.do_start_instance(result)
-        d, self._start_deferred = self._start_deferred, None
+        d = self._start_deferred
+        self._start_deferred = None
         d.callback(result)
 
     @defer.inlineCallbacks
@@ -116,7 +121,8 @@ class LatentController(SeverWorkerConnectionMixin):
     @defer.inlineCallbacks
     def stop_instance(self, result):
         yield self.do_stop_instance()
-        d, self._stop_deferred = self._stop_deferred, None
+        d = self._stop_deferred
+        self._stop_deferred = None
         d.callback(result)
 
     @defer.inlineCallbacks
@@ -226,3 +232,6 @@ class ControllableLatentWorker(AbstractLatentWorker):
             return True
         self._controller._stop_deferred = defer.Deferred()
         return (yield self._controller._stop_deferred)
+
+    def check_instance(self):
+        return (not self._controller.has_crashed, "")

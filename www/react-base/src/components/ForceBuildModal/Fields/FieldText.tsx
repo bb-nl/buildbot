@@ -15,28 +15,27 @@
   Copyright Buildbot Team Members
 */
 
-import {ForceSchedulerFieldText} from "../../../data/classes/Forcescheduler";
+import {ForceSchedulerFieldText} from "buildbot-data-js";
 import {ForceBuildModalFieldsState} from "../ForceBuildModalFieldsState";
 import {observer} from "mobx-react";
-import FieldBase from "./FieldBase";
+import {FieldBase} from "./FieldBase";
 
 type FieldTextProps = {
   field: ForceSchedulerFieldText;
   fieldsState: ForceBuildModalFieldsState;
 }
 
-const FieldText = observer(({field, fieldsState}: FieldTextProps) => {
-  const state = fieldsState.fields.get(field.name)!;
+export const FieldText = observer(({field, fieldsState}: FieldTextProps) => {
+  const state = fieldsState.fields.get(field.fullName)!;
 
   return (
     <FieldBase field={field} fieldsState={fieldsState}>
-      <label htmlFor={field.name} className="control-label col-sm-2">{field.label}</label>
+      <label htmlFor={field.fullName} className="control-label col-sm-10">{field.label}</label>
       <div className="col-sm-10">
-        <textarea className="form-control" rows={field.rows} value={state.value}
-                  onChange={event => fieldsState.setValue(field.name, event.target.value)}/>
+        <textarea data-bb-test-id={`force-field-${field.fullName}`}
+                  className="form-control" rows={field.rows} value={state.value}
+                  onChange={event => fieldsState.setValue(field.fullName, event.target.value)}/>
       </div>
     </FieldBase>
   );
 });
-
-export default FieldText;

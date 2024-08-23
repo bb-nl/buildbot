@@ -17,15 +17,10 @@
 
 import './Topbar.scss'
 import {Link} from "react-router-dom";
-import TopbarStore from "../../stores/TopbarStore";
 import {computed} from "mobx";
 import {observer} from "mobx-react";
 import {Nav, Navbar} from "react-bootstrap";
-
-export type TopbarItem = {
-  route: string | null,
-  caption: string
-}
+import {TopbarStore} from "buildbot-ui";
 
 type TopbarProps = {
   store: TopbarStore,
@@ -33,7 +28,7 @@ type TopbarProps = {
   children: JSX.Element | JSX.Element[]
 }
 
-const Topbar = observer(({store, appTitle, children}: TopbarProps) => {
+export const Topbar = observer(({store, appTitle, children}: TopbarProps) => {
   const elements = computed(() => store.items.map((item, index) => {
     if (item.route === null) {
       return (
@@ -60,5 +55,3 @@ const Topbar = observer(({store, appTitle, children}: TopbarProps) => {
     </Navbar>
   );
 });
-
-export default Topbar;

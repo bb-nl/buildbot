@@ -15,28 +15,27 @@
   Copyright Buildbot Team Members
 */
 
-import {ForceSchedulerFieldInt} from "../../../data/classes/Forcescheduler";
+import {ForceSchedulerFieldInt} from "buildbot-data-js";
 import {ForceBuildModalFieldsState} from "../ForceBuildModalFieldsState";
 import {observer} from "mobx-react";
-import FieldBase from "./FieldBase";
+import {FieldBase} from "./FieldBase";
 
 type FieldIntProps = {
   field: ForceSchedulerFieldInt;
   fieldsState: ForceBuildModalFieldsState;
 }
 
-const FieldInt = observer(({field, fieldsState}: FieldIntProps) => {
-  const state = fieldsState.fields.get(field.name)!;
+export const FieldInt = observer(({field, fieldsState}: FieldIntProps) => {
+  const state = fieldsState.fields.get(field.fullName)!;
 
   return (
     <FieldBase field={field} fieldsState={fieldsState}>
-      <label htmlFor={field.name} className="control-label col-sm-2">{field.label}</label>
+      <label htmlFor={field.fullName} className="control-label col-sm-10">{field.label}</label>
       <div className="col-sm-10">
-        <input type="text" className="form-control" value={state.value}
-               onChange={event => fieldsState.setValue(field.name, event.target.value)}/>
+        <input data-bb-test-id={`force-field-${field.fullName}`}
+               type="number" className="form-control" value={state.value}
+               onChange={event => fieldsState.setValue(field.fullName, Number.parseInt(event.target.value))}/>
       </div>
     </FieldBase>
   );
 });
-
-export default FieldInt;

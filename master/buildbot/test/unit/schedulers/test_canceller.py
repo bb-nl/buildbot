@@ -334,7 +334,7 @@ class TestOldBuildCanceller(TestReactorMixin, unittest.TestCase):
         }
 
     def insert_test_data(self):
-        self.master.db.insertTestData([
+        self.master.db.insert_test_data([
             fakedb.Master(id=92),
             fakedb.Worker(id=13, name='wrk'),
             fakedb.Builder(id=79, name='builder1'),
@@ -396,7 +396,7 @@ class TestOldBuildCanceller(TestReactorMixin, unittest.TestCase):
                 brdict = yield self.master.db.buildrequests.getBuildRequest(id)
                 expected_productions.append((('buildrequests', str(id), 'cancel'), brdict))
             else:
-                raise Exception(f"Unknown cancellation type {kind}")
+                raise RuntimeError(f"Unknown cancellation type {kind}")
 
         self.master.mq.assertProductions(expected_productions)
 

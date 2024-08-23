@@ -194,7 +194,7 @@ class VisualStudio(buildstep.ShellMixin, buildstep.BuildStep):
     def getResultSummary(self):
         if self.logobserver is None:
             # step was skipped or log observer was not created due to another reason
-            return {"step": results.Results[self.results]}
+            return {"step": results.statusToString(self.results)}
 
         description = (f'compile {self.logobserver.nbProjects} projects {self.logobserver.nbFiles} '
                        'files')
@@ -205,7 +205,9 @@ class VisualStudio(buildstep.ShellMixin, buildstep.BuildStep):
             description += f' {self.logobserver.nbErrors} errors'
 
         if self.results != results.SUCCESS:
-            description += f' ({results.Results[self.results]})'
+            description += f' ({results.statusToString(self.results)})'
+            if self.timed_out:
+                description += " (timed out)"
 
         return {'step': description}
 
@@ -510,7 +512,7 @@ class MsBuild4(VisualStudio):
         if self.platform is None:
             config.error('platform is mandatory. Please specify a string such as "Win32"')
 
-        yield self.updateSummary()
+        self.updateSummary()
 
         command = (f'"%VCENV_BAT%" x86 && msbuild "{self.projectfile}" '
                    f'/p:Configuration="{self.config}" /p:Platform="{self.platform}" /maxcpucount')
@@ -570,7 +572,7 @@ class MsBuild141(VisualStudio):
 
         self.description = 'building ' + self.describe_project()
         self.descriptionDone = 'built ' + self.describe_project()
-        yield self.updateSummary()
+        self.updateSummary()
 
         command = ('FOR /F "tokens=*" %%I in '
                    f'(\'vswhere.exe -version "{self.version_range}" -products * '

@@ -21,8 +21,8 @@ import {ForceBuildModalFieldsState} from "../ForceBuildModalFieldsState";
 import {
   ForceSchedulerFieldBase,
   ForceSchedulerFieldNested
-} from "../../../data/classes/Forcescheduler";
-import FieldAny from "./FieldAny";
+} from "buildbot-data-js";
+import {FieldAny} from "./FieldAny";
 import {Card, Tab, Tabs} from "react-bootstrap";
 
 const shouldHideField = (field: ForceSchedulerFieldBase) => {
@@ -42,12 +42,26 @@ const shouldHideField = (field: ForceSchedulerFieldBase) => {
   return false;
 }
 
+const filteredMap = (fields: ForceSchedulerFieldBase[],
+                     callbackFn: (f: ForceSchedulerFieldBase, index: number) => JSX.Element) => {
+  // .filter(...).map(...) cannot be used because the indexes of the original array need to be preserved in the callback
+  const res: JSX.Element[] = [];
+  for (let i = 0; i < fields.length; ++i) {
+    const field = fields[i];
+    if (shouldHideField(field)) {
+      continue;
+    }
+    res.push(callbackFn(field, i));
+  }
+  return res;
+}
+
 type FieldNestedProps = {
   field: ForceSchedulerFieldNested;
   fieldsState: ForceBuildModalFieldsState;
 }
 
-const FieldNested = observer(({field, fieldsState}: FieldNestedProps) => {
+export const FieldNested = observer(({field, fieldsState}: FieldNestedProps) => {
 
   const columns = field.columns ?? 1;
   const columnClass = `col-sm-${(12 / columns).toString()}`;
@@ -57,8 +71,8 @@ const FieldNested = observer(({field, fieldsState}: FieldNestedProps) => {
       <div>
         <Tabs>
           {
-            field.fields.filter(f => !shouldHideField(f)).map(f => (
-              <Tab title={f.tablabel} className={columnClass}>
+            filteredMap(field.fields, (f, index) => (
+              <Tab key={f.name === "" ? index : f.name} title={f.tablabel} className={columnClass}>
                 <FieldAny field={f} fieldsState={fieldsState}></FieldAny>
               </Tab>
             ))
@@ -71,12 +85,12 @@ const FieldNested = observer(({field, fieldsState}: FieldNestedProps) => {
   if (field.layout === 'vertical') {
     return (
       <Card>
-        { field.label !== null ? <Card.Header>{field.label}</Card.Header> : <></> }
+        { field.label !== null && field.label !== '' ? <Card.Header>{field.label}</Card.Header> : <></> }
         <Card.Body>
-          <div className="form-horizontal">
+          <div className="row">
             {
-              field.fields.filter(f => !shouldHideField(f)).map(f => (
-                <div className={columnClass}>
+              filteredMap(field.fields, (f, index) => (
+                <div key={f.name === "" ? index : f.name} className={columnClass}>
                   <FieldAny field={f} fieldsState={fieldsState}></FieldAny>
                 </div>
               ))
@@ -89,10 +103,10 @@ const FieldNested = observer(({field, fieldsState}: FieldNestedProps) => {
 
   // layout === simple
   return (
-    <div className="form-horizontal">
+    <div className="row">
       {
-        field.fields.filter(f => !shouldHideField(f)).map(f => (
-          <div className={columnClass}>
+        filteredMap(field.fields, (f, index) => (
+          <div key={f.name === "" ? index : f.name} className={columnClass}>
             <FieldAny field={f} fieldsState={fieldsState}></FieldAny>
           </div>
         ))
@@ -100,5 +114,3 @@ const FieldNested = observer(({field, fieldsState}: FieldNestedProps) => {
     </div>
   );
 });
-
-export default FieldNested;

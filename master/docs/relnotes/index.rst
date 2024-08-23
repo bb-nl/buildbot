@@ -8,6 +8,371 @@ Release Notes
 
 .. towncrier release notes start
 
+Buildbot ``3.11.7`` ( ``2024-08-01`` )
+======================================
+
+Bug fixes
+---------
+
+- Fixed ``GitPoller`` when repourl has the port specified (:issue:`7822`)
+- Fixed ``ChoiceStringParameter`` fields with ``multiple`` would not store the selected values
+- Fixed unnecessary trimming of spaces in logs showed in the web UI (:issue:`7774`)
+- Fixed favicon colors on build views in the web UI
+- Fixed the icon on the about page in the web UI
+- Fixed a regression where builds in waterfall view were no longer linking to the build page.
+
+Changes
+-------
+
+- Buildbot will now error when configured with multiple services of the same type are configured with the same name (:issue:`6987`)
+
+Buildbot ``3.11.6`` ( ``2024-07-12`` )
+======================================
+
+Bug fixes
+---------
+
+- Transfer build steps (:bb:step:`FileUpload`, :bb:step:`DirectoryUpload`,
+  :bb:step:`MultipleFileUpload`, :bb:step:`FileDownload`, and :bb:step:`StringDownload`) now
+  correctly remove destination on failure, no longer leaving partial content (:issue:`2860`)
+- Fixed ReactUI when Buildbot is hosted behind a reverse proxy not at url's root (:issue:`7260`,
+  :issue:`7746`)
+- Fixed results color shown on builder's header in waterfall view
+- Fixed cases where waterfall view could be squashed to a pixel high
+- Improved flexibility of `scaling_waterfall` setting to support floating-point values for more
+  condensed view.
+
+Buildbot ``3.11.5`` ( ``2024-06-24`` )
+======================================
+
+Bug fixes
+---------
+
+- Fixed several occasional data update glitches in web frontend
+- Fixed display of newly added builds in Workers view in the web frontend.
+
+Buildbot ``v3.11.4`` ( ``2024-06-20`` )
+=======================================
+
+Bug fixes
+---------
+
+- Fixed a regression where ``GitPoller`` would no longer register new changes (regression introduced
+  in 3.11.3 in #7554)
+
+Buildbot ``3.11.3`` ( ``2024-05-19`` )
+======================================
+
+Bug fixes
+---------
+
+- Fixed a bug that caused ``GitPoller`` running with git configured with ``fetch.prune=true``
+  parameter to fail.
+- Fixed a bug that caused ``GitPoller`` to miss changes when buildbot is reconfigured
+- Reduced length of directory names produced by ``GitPoller`` internally. Long directory names
+  could potentially break ``GitPoller`` on filesystems with low path and name length limits.
+- Removed credentials from ``repourl`` used in the tracker branch name.
+
+Deprecations and Removals
+-------------------------
+
+- The ``pollinterval`` (note the small ``i``) argument of various change sources has been deprecated
+  with a warning in favor of ``pollInterval``.
+
+Features
+--------
+
+- Added ``MessageFormatterFunctionRaw`` which allows complete customization of messages to be emitted.
+  This feature has been available since 3.11.0 and only the announcement has been missed.
+
+Buildbot ``3.11.2`` ( ``2024-05-04`` )
+======================================
+
+Bug fixes
+---------
+
+- Fixed an error in HgPoller when repository initialization fails (:issue:`7488`)
+- Updated `Makefile` to handle Windows paths and Python.
+- Added a web configuration setting to select whether build completion or start times are displayed.
+- Added revision info column in the web frontend.
+- Fixed steps raw log download button.
+- Fixed a regression in React UI that prevented hosting Buildbot at a custom URL prefix. This allows
+  to support multiple Buildbot instances on a single server.
+
+Improved Documentation
+----------------------
+
+- Documented that ``ChangeSource`` does not support secrets (or any other renderables), best
+  practice of not encoding secret values in changes and alternative solutions when secret values in
+  changes are unavoidable. ``ChangeSource`` accidentally supported renderable arguments up until
+  Buildbot 3.7, but this was not documented behavior.
+
+Buildbot ``3.11.1`` ( ``2024-02-24`` )
+======================================
+
+Bug fixes
+---------
+
+- ``GitPoller`` now ensures the SSH Private Key it uses has a trailing newline.
+- Migrated off python-future which prevented installing Buildbot on distributions that do not provide
+  that package.
+- Fix sporadic navigation to builders page when new build is started (:issue:`7307`).
+
+
+Buildbot ``3.11.0`` ( ``2024-01-25`` )
+======================================
+
+Bug fixes
+---------
+
+- Declare Python 3.12 compatibility in generated packages of master and worker
+
+Features
+--------
+
+- Added a new WSGI dashboards plugin for React frontend.
+  It is backwards compatible with AngularJS one but may require changes in CSS styling of displayed web pages.
+- Implemented a report generator (``BuildSetCombinedStatusGenerator``) that can access complete
+  information about a buildset.
+- Low level database API now has ``get_sourcestamps_for_buildset`` to get source stamps for a
+  buildset. "/buildsets/:buildsetid/sourcestamps" endpoint has been added to access this from the
+  Data API.
+- Added buildset information to dictionaries returned by report generators.
+- Added a way to pass additional reporter-specific data to Reporters. Added ``extra_info_cb``
+  argument to ``MessageFormatter`` for this use case.
+- Implemented support for report generators in ``GerritStatusPush``.
+
+Deprecations and Removals
+-------------------------
+
+- The ``reviewCB``, ``reviewArg``, ``startCB``, ``startArg``, ``summaryCB``, ``summaryArg``,
+  ``builders`` , ``wantSteps``, ``wantLogs`` arguments of ``GerritStatusPush`` have been deprecated.
+
+Buildbot ``3.10.1`` ( ``2023-12-26`` )
+======================================
+
+Bug fixes
+---------
+
+- Fixed support for Twisted 23.10 and Python 3.12.
+- Fixed Data API to have "parent_buildid" key-value pair in messages for rebuilt buildsets (:issue `7222`).
+- Improved security of tarfile extraction to help avoid CVE-2007-4559. See more details in https://peps.python.org/pep-0706/. Buildbot uses filter='data' now. (:issue:`7294`)
+- Fixed web frontend package build on certain Python versions (e.g. 3.9).
+
+
+Buildbot ``3.10.0`` ( ``2023-12-04`` )
+======================================
+
+Bug fixes
+---------
+
+- ``buildbot.changes.bitbucket.BitbucketPullrequestPoller`` has been updated to emit the change files.
+- Fixed build status key sent to Bitbucket exceeding length limits (:issue:`7049`).
+- Fixed a race condition resulting in ``EXCEPTION`` build results when build steps that are about to end are cancelled.
+- Buildrequests are now selected by priority and then by buildrequestid (previously, Buildbot used the age as the secondary sort parameter).
+  This preserves the property of choosing the oldest buildrequest, but makes it predictable which buildrequest will be selected, as there might be multiple buildrequests with the same age.
+- Fixed worker to fail a step ``uploadDirectory`` instead of throwing an exception when directory is not available. (:issue:`5878`)
+- Added missing ``parent_buildid`` and ``parent_relationship`` keys to the buildset completion event in the Data API.
+- Improved handling of Docker containers that fail before worker attaches to master.
+  In such case build will be restarted immediately instead of waiting for a timeout to expire.
+- Enhanced the accessibility of secret files by enabling group-readability.
+  Previously, secret files were exclusively accessible to the owner. Now,
+  accessibility has been expanded to allow group members access as well. This
+  enhancement is particularly beneficial when utilizing Systemd's LoadCredential
+  feature, which configures secrets with group-readable (0o440) permissions.
+- ``MailNotifier`` now works correctly when SSL packages are installed but ``useTls=False`` and auth (``smtpUser``, ``smtpPassword``) is not set. (:issue:`5609`)
+- - `P4` now reports the correct `got_revision` when syncing a changelist that only delete files
+- - `P4` step now use the rev-spec format `//{p4client}/...@{revision}` when syncing with a revision
+- Fixed incorrect propagation of option ``--proxy-connection-string`` into buildbot.tac when creating new Worker.
+- Fixed link to Builder in React Grid View.
+- Addressed a number of timing errors in ``Nightly`` scheduler by upgrading ``croniter`` code.
+
+Changes
+-------
+
+- Buildbot will render step properties and check if step should be skipped before acquiring locks.
+  This allows to skip waiting for locks in case step is skipped.
+- The ``isRaw`` and ``isCollection`` attributes of the ``Endpoint`` type have been deprecated.
+  ``Endpoint`` is used to extend the Buildbot API.
+  Us a replacement use the new ``kind`` attribute.
+- ``AbstractLatentWorker.check_instance()`` now accepts error message being supplied in case instance is not good.
+  The previous API has been deprecated.
+- The published Docker image for the worker now uses Debian 11 (Bullseye) as base image.
+- The published Docker image for the worker now runs Buildbot in virtualenv.
+
+Improved Documentation
+----------------------
+
+- Describe an existing bug with Libvirt latent workers that does not use a copy of the image (:issue `7122`).
+
+Features
+--------
+
+- The new React-based web frontend is no longer experimental.
+  To enable please see :ref:`the documentation on upgrading to 4.0 <4.0_Upgrading>` for more information.
+  The new web frontend includes the following improvements compared to legacy AngularJS web frontend:
+
+    - Project support (initially released in Buildbot 3.9.0).
+    - Steps now show the amount of time spent waiting for locks.
+    - The log viewer now supports huge logs without problems.
+    - The log viewer now includes a search box that downloads entire log on-demand without additional button click.
+    - The log viewer now supports downloading log file both as a file and also showing it inline in the browser.
+    - The colors of the website can be adjusted from Buildbot configuration via ``www["theme"]`` key.
+    - Buildsteps and pending buildrequests have anchor links which allows linking directly to them from external web pages.
+
+- Workers can now be created to use ``connection string`` right out of the box when new option ``--connection-string=`` is used.
+- Docker Latent workers will now show last logs in Buildbot UI when their startup fails.
+- Added ``EndpointKind.RAW_INLINE`` data API endpoint type which will show the response data inline in the browser instead of downloading as a file.
+- Implemented a way to specify volumes for containers spawned by ``KubeLatentWorker``.
+- ``Nightly`` scheduler now supports forcing builds at specific times even if ``onlyIfChanged`` parameter was true and there were no important changes.
+- ``buildbot.steps.source.p4.P4`` can now take a ``p4client_type`` argument to set the client type (More information on client type [here](https://www.perforce.com/manuals/p4sag/Content/P4SAG/performance.readonly.html))
+- Added data and REST APIs to retrieve only projects with active builders.
+- Improved step result reporting to specify whether step failed due to a time out.
+- Added ``tags`` option to the ``Git`` source step to download tags when updating repository.
+- Worker now sends ``failure_reason`` update when the command it was running timed out.
+
+Deprecations and Removals
+-------------------------
+
+- Legacy AngularJS web frontend will be removed in Buildbot 4.0.
+  Fixes to React web frontend that are regressions from AngularJS web frontend will be backported to 3.x Buildbot series to make migration easier.
+- Buildbot Master now requires Python 3.8 or newer.
+  Python 3.7 is no longer supported.
+- ``buildbot.util.croniter`` module has been deprecated in favor of using Pypi ``croniter`` package.
+- ``master.data.updates.setWorkerState()`` has been deprecated.
+  Use ``master.data.updates.set_worker_paused()`` and ``master.data.updates.set_worker_graceful()`` as replacements.
+- Buildbot now requires ``docker`` of version v4.0.0 or newer for Docker support.
+- BuildStep instances are now more strict about when their attributes can be changed.
+  Changing attributes of BuildStep instances that are not yet part of any build is most likely an error.
+  This is because such instances are only being used to configure a builder as a source to create real steps from.
+  In this scenario any attribute changes are ignored as far as build configuration is concerned.
+
+  Such changing of attributes has been deprecated and will become an error in the future release.
+
+  For customizing BuildStep after an instance has already been created `set_step_arg(name, value)` function has been added.
+
+Buildbot ``3.9.2`` ( ``2023-09-02`` )
+=====================================
+
+Bug fixes
+---------
+
+- Work around requirements parsing error for the Twisted dependency by pinning Twisted to 22.10 or older.
+  This fixes buildbot crash on startup when newest Twisted is installed.
+
+
+Buildbot ``3.9.1`` ( ``2023-09-02`` )
+=====================================
+
+Bug fixes
+---------
+
+- Fixed handling of primary key columns on Postgres in the ``copy-db`` script.
+- Fixed a race condition in the ``copy-db`` script which sometimes lead to no data being copied.
+- Options for `create-worker` that are converted to numbers are now also checked to be valid Python literals.
+  This will prevent creating invalid worker configurations, e.g.: when using option ``--umask=022`` instead of ``--umask=0o022`` or ``--umask=18``. (:issue:`7047`)
+- Fixed worker not connecting error when there are files in WORKER/info folder that can not be decoded. (:issue:`3585`) (:issue:`4758`) (:issue:`6932`)
+- Fixed incorrect git command line parameters when using ``Git`` source step with ``mode="incremental"``, ``shallow=True``, ``submodules=True`` (regression since Buildbot 3.9.0) (:issue:`7054`).
+
+Improved Documentation
+----------------------
+
+- Clarified that ``shallow`` option for the ``Git`` source step is also supported in ``incremental`` mode.
+
+
+Buildbot ``3.9.0`` ( ``2023-08-16`` )
+=====================================
+
+Bug fixes
+---------
+
+- Fixed missed invocations of methods decorated with ``util.debounce`` when debouncer was being stopped under certain conditions.
+  This caused step and build state string updates to be sometimes missed.
+- Improved stale connection handling in ``GerritChangeSource``.
+  ``GerritChangeSource`` will instruct the ssh client to send periodic keepalive messages and will reconnect if the server does not reply for 45 seconds (default).
+  ``GerritChangeSource`` now has ``ssh_server_alive_interval_s`` and ``ssh_server_alive_count_max`` options to control this behavior.
+- Fixed unnecessary build started under the following conditions: there is an existing Nightly scheduler, ``onlyIfChanged`` is set to true and there is version upgrade from v3.4.0 (:issue:`6793`).
+- Fixed performance of changes data API queries with custom filters.
+- Prevent possible event loss during reconfig of reporters (:issue:`6982`).
+- Fixed exception thrown when worker copies directories in Solaris operating system (:issue:`6870`).
+- Fixed excessive log messages due to JWT token decoding error (:issue:`6872`).
+- Fixed excessive log messages when otherwise unsupported ``/auth/login`` endpoint is accessed when using ``RemoteUserAuth`` authentication plugin.
+
+Features
+--------
+
+- Introduce a way to group builders by project.
+  A new ``projects`` list is added to the configuration dictionary.
+  Builders can be associated to the entries in that list by the new ``project`` argument.
+
+  Grouping builders by project allows to significantly clean up the UI in larger Buildbot installations that contain hundreds or thousands of builders for a smaller number of unrelated codebases.
+  This is currently implemented only in experimental React UI.
+- Added support specifying the project in ``GitHubPullrequestPoller``.
+  Previously it was forced to be equal to GitHub's repository full name.
+- Reporter ``BitbucketServerCoreAPIStatusPush`` now supports ``BuildRequestGenerator`` and generates build status for build requests (by default).
+- Buildbot now has ``copy-db`` script migrate all data stored in the database from one database to another.
+  This may be used to change database engine types.
+  For example a sqlite database may be migrated to Postgres or MySQL when the load and data size grows.
+- Added cron features like last day of month to ``Nightly`` Scheduler.
+- Buildrequests can now have their priority changed, using the ``/buildrequests`` API.
+- The force scheduler can now set a build request priority.
+- Added support for specifying builder descriptions in markdown which is later rendered to HTML for presentation in the web frontend.
+- Build requests are now sorted according to their buildrequest.
+  Request time is now used as a secondary sort key.
+- Significantly improved performance of reporters or reporters with slower generators which is important on larger Buildbot installations.
+- Schedulers can now set a default priority for the buildrequests that it creates.
+  It can either be an integer or a function.
+- Implement support for shallow submodule update using git.
+- ``GerritChangeSource`` will now log a small number of previous log lines coming from ``ssh`` process in case of connection failure.
+
+Deprecations and Removals
+-------------------------
+
+- Deprecated ``projectName`` and ``projectURL`` configuration dictionary keys.
+
+
+Buildbot ``3.8.0`` ( ``2023-04-16`` )
+=====================================
+
+Bug fixes
+---------
+
+- Fixed compatibility issues with Python 3.11.
+- Fixed compatibility with Autobahn v22.4.1 and newer.
+- Fixed issue with overriding `env` when calling `ShellMixin.makeRemoteShellCommand`
+- Buildbot will now include the previous location of moved files when evaluating a Github commit.
+  This fixes an issue where a commit that moves a file out of a folder, would not be shown in the
+  web UI for a builder that is tracking that same folder.
+- Improved reliability of Buildbot log watching to follow log files even after rotation.
+  This improves reliability of Buildbot start and restart scripts.
+- Fixed handling of occasional errors that happen when attempting to kill a master-side process that has already exited.
+- Fixed a race condition in PyLint step that may lead to step throwing exceptions.
+- Fixed compatibility with qemu 6.1 and newer when using LibVirtWorker with ``cheap_copy=True`` (default).
+- Fixed an issue with secrets provider stripping newline from ssh keys sent in git steps.
+- Fixed occasional errors that happen when killing processes on Windows. TASKKILL command may return
+  code 255 when process has already exited.
+- Fixed deleting secrets from worker that contain '~' in their destination path.
+
+Changes
+-------
+
+- Buildbot now requires NodeJS 14.18 or newer to build the frontend.
+- The URLs emitted by the Buildbot APIs have been changed to include slash after the hash (``#``)
+  symbol to be compatible with what React web UI supports.
+
+Improved Documentation
+----------------------
+
+- Replace statement "https is unsupported" with a more detailed disclaimer.
+
+Features
+--------
+
+- Add a way to disable default ``WarningCountingShellCommand`` parser.
+- Added health check API that latent workers can use to specify that a particular worker will not connect and build should not wait for it and mark itself as failure immediately.
+- Implemented a way to customize TLS setting for ``LdapUserInfo``.
+
+
 Buildbot ``3.7.0`` ( ``2022-12-04`` )
 =====================================
 

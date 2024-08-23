@@ -17,7 +17,7 @@
 
 import renderer, {act} from 'react-test-renderer';
 import {MemoryRouter} from "react-router-dom";
-import RawData from './RawData';
+import {RawData} from './RawData';
 import {observable} from "mobx";
 
 function assertRenderSnapshot(data: {[key: string]: any}) {
@@ -36,7 +36,7 @@ function assertRenderSnapshotExpanded(data: {[key: string]: any}) {
     </MemoryRouter>
   );
   act(() =>
-    component.root.findByType("i").props.onClick()
+    component.root.findByType("svg").props.onClick()
   );
   expect(component.toJSON()).toMatchSnapshot();
 }
@@ -49,6 +49,8 @@ describe('RawData component', function() {
       float: 123.4,
       boolean: true,
       array: [321, "string", true],
+      null: null,
+      undefined: undefined,
     }
 
     assertRenderSnapshot(obj);
@@ -61,6 +63,8 @@ describe('RawData component', function() {
       float: 123.4,
       boolean: true,
       array: observable([321, "string", true]),
+      null: null,
+      undefined: undefined,
     });
 
     assertRenderSnapshot(obj);
@@ -73,6 +77,8 @@ describe('RawData component', function() {
         {int: 123},
         {float: 123.4},
         {boolean: true},
+        {null: null},
+        {undefined: undefined},
       ],
     };
 
@@ -86,6 +92,8 @@ describe('RawData component', function() {
         {int: 123},
         {float: 123.4},
         {boolean: true},
+        {null: null},
+        {undefined: undefined},
       ],
     };
 
@@ -99,6 +107,8 @@ describe('RawData component', function() {
         observable({int: 123}),
         observable({float: 123.4}),
         observable({boolean: true}),
+        observable({null: null}),
+        observable({undefined: undefined}),
       ],
     });
 

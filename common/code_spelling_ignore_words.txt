@@ -74,6 +74,7 @@ assertraisesregexp
 assertregex
 assertregexpmatches
 assertresults
+astroid
 async
 asynclrucache
 asyncio
@@ -199,6 +200,7 @@ buildreq
 buildrequest
 buildrequestcompletions
 buildrequestdistributor
+buildrequestid
 buildrequestresults
 buildrequests
 buildrequestsconnectorcomponent
@@ -207,6 +209,7 @@ buildroot
 build's
 buildset
 buildsetcomplete
+buildsetid
 buildset's
 buildsets
 buildsetsubmitted
@@ -356,6 +359,7 @@ credc
 creds
 cribed
 croniter
+crontab
 css
 ctime
 ctrl
@@ -397,6 +401,7 @@ delayedcall
 denormalized
 dependabot
 deprecatedmoduleattribute
+desc
 descriptionsuffix
 desynchronization
 dev
@@ -434,6 +439,7 @@ downloadstring
 dradez
 dss
 du
+dunder
 dup
 durations
 durchmesser
@@ -678,6 +684,7 @@ ie
 iff
 i'm
 impl
+importlib
 ina
 incrementing
 indextemplates
@@ -740,6 +747,7 @@ ivars
 jã
 jacobs
 james
+jan
 jason
 java
 javascript
@@ -1010,6 +1018,7 @@ osx
 otherstatusreceivers
 overridable
 overridebuildsetmethods
+oversubscription
 pam
 paramiko
 params
@@ -1088,6 +1097,7 @@ produceevent
 programmatically
 progressmetrics
 proj
+projectid
 projectname
 proto
 prs
@@ -1224,6 +1234,7 @@ rmdirrecursive
 rmfile
 rmtree
 robocopy
+ropeproject
 routingkey
 rp
 rpc
@@ -1686,3 +1697,4 @@ yieldmetricsvalue
 za
 zadka
 zope
+ztag

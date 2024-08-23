@@ -16,20 +16,20 @@
 # Method to add build step taken from here
 # https://seasonofcode.com/posts/how-to-add-custom-build-steps-and-commands-to-setuppy.html
 import datetime
+import logging
 import os
 import re
+import shutil
 import subprocess
 import sys
-from pkg_resources import parse_version
 from subprocess import PIPE
 from subprocess import STDOUT
 from subprocess import Popen
 
 import setuptools.command.build_py
 import setuptools.command.egg_info
+from setuptools import Command
 from setuptools import setup
-
-import distutils.cmd  # isort:skip
 
 old_listdir = os.listdir
 
@@ -80,7 +80,7 @@ def mTimeVersion(init_file):
     for root, dirs, files in os.walk(cwd):
         for f in files:
             m = max(os.path.getmtime(os.path.join(root, f)), m)
-    d = datetime.datetime.utcfromtimestamp(m)
+    d = datetime.datetime.fromtimestamp(m, datetime.timezone.utc)
     return d.strftime("%Y.%m.%d")
 
 
@@ -107,7 +107,7 @@ def getVersionFromArchiveId(git_archive_id='$Format:%ct %d$'):
 
         # archived revision is not tagged, use the commit date
         tstamp = git_archive_id.strip().split()[0]
-        d = datetime.datetime.utcfromtimestamp(int(tstamp))
+        d = datetime.datetime.fromtimestamp(int(tstamp), datetime.timezone.utc)
         return d.strftime('%Y.%m.%d')
     return None
 
@@ -182,7 +182,7 @@ def getVersion(init_file):
 # This is why we override both egg_info and build, and the first run build
 # the js.
 
-class BuildJsCommand(distutils.cmd.Command):
+class BuildJsCommand(Command):
     """A custom command to run JS build."""
 
     description = 'run JS build'
@@ -198,6 +198,10 @@ class BuildJsCommand(distutils.cmd.Command):
         """Run command."""
         if self.already_run:
             return
+
+        if os.path.isdir('build'):
+            shutil.rmtree('build')
+
         package = self.distribution.packages[0]
         if os.path.exists("package.json"):
 
@@ -223,13 +227,13 @@ class BuildJsCommand(distutils.cmd.Command):
             ]
 
             for command in commands:
-                self.announce('Running command: {}'.format(str(" ".join(command))),
-                              level=distutils.log.INFO)
+                logging.info('Running command: {}'.format(str(" ".join(command))))
                 subprocess.check_call(command, shell=shell)
 
         self.copy_tree(os.path.join(package, 'static'), os.path.join(
             "build", "lib", package, "static"))
 
+        assert self.distribution.metadata.version is not None, "version is not set"
         with open(os.path.join("build", "lib", package, "VERSION"), "w") as f:
             f.write(self.distribution.metadata.version)
 

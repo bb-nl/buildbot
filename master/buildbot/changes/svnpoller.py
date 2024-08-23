@@ -27,13 +27,14 @@ from buildbot import util
 from buildbot.changes import base
 from buildbot.util import bytes2unicode
 from buildbot.util import runprocess
+from buildbot.warnings import warn_deprecated
 
 # these split_file_* functions are available for use as values to the
 # split_file= argument.
 
 
 def split_file_alwaystrunk(path):
-    return dict(path=path)
+    return {"path": path}
 
 
 def split_file_branches(path):
@@ -59,7 +60,7 @@ def split_file_projects_branches(path):
     project, path = path.split("/", 1)
     f = split_file_branches(path)
     if f:
-        info = dict(project=project, path=f[1])
+        info = {"project": project, "path": f[1]}
         if f[0]:
             info['branch'] = f[0]
         return info
@@ -96,6 +97,7 @@ class SVNPoller(base.ReconfigurablePollingChangeSource, util.ComparableMixin):
         # for backward compatibility; the parameter used to be spelled with 'i'
         if pollinterval != -2:
             pollInterval = pollinterval
+            warn_deprecated('3.11.3', 'pollinterval has been deprecated: please use pollInterval')
 
         if name is None:
             name = repourl
@@ -114,6 +116,7 @@ class SVNPoller(base.ReconfigurablePollingChangeSource, util.ComparableMixin):
         # for backward compatibility; the parameter used to be spelled with 'i'
         if pollinterval != -2:
             pollInterval = pollinterval
+            warn_deprecated('3.11.3', 'pollinterval has been deprecated: please use pollInterval')
 
         if name is None:
             name = repourl
@@ -339,7 +342,7 @@ class SVNPoller(base.ReconfigurablePollingChangeSource, util.ComparableMixin):
         if not where:
             return None
         if isinstance(where, tuple):
-            where = dict(branch=where[0], path=where[1])
+            where = {"branch": where[0], "path": where[1]}
         return where
 
     def create_changes(self, new_logentries):
@@ -416,23 +419,20 @@ class SVNPoller(base.ReconfigurablePollingChangeSource, util.ComparableMixin):
                         number_of_files_changed == 1 and files[0] == ''):
                     log.msg(f"Ignoring deletion of branch '{branch}'")
                 else:
-                    chdict = dict(
-                        author=author,
-                        committer=None,
+                    chdict = {
+                        "author": author,
+                        "committer": None,
                         # weakly assume filenames are utf-8
-                        files=[bytes2unicode(f, 'utf-8', 'replace')
-                               for f in files],
-                        comments=comments,
-                        revision=revision,
-                        branch=util.bytes2unicode(branch),
-                        revlink=revlink,
-                        category=self.category,
-                        repository=util.bytes2unicode(
-                            info.get('repository', self.repourl)),
-                        project=util.bytes2unicode(
-                            info.get('project', self.project)),
-                        codebase=util.bytes2unicode(
-                            info.get('codebase', None)))
+                        "files": [bytes2unicode(f, 'utf-8', 'replace') for f in files],
+                        "comments": comments,
+                        "revision": revision,
+                        "branch": util.bytes2unicode(branch),
+                        "revlink": revlink,
+                        "category": self.category,
+                        "repository": util.bytes2unicode(info.get('repository', self.repourl)),
+                        "project": util.bytes2unicode(info.get('project', self.project)),
+                        "codebase": util.bytes2unicode(info.get('codebase', None))
+                    }
                     changes.append(chdict)
 
         return changes

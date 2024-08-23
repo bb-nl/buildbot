@@ -13,7 +13,7 @@
 #
 # Copyright Buildbot Team Members
 
-import mock
+from unittest import mock
 
 from twisted.internet import defer
 from twisted.internet import task
@@ -22,6 +22,7 @@ from twisted.trial import unittest
 from buildbot import config
 from buildbot.process.properties import Interpolate
 from buildbot.util import service
+from buildbot.util.twisted import async_to_deferred
 
 
 class DeferredStartStop(service.AsyncService):
@@ -582,7 +583,7 @@ class BuildbotService(unittest.TestCase):
     def testNominal(self):
         yield self.prepareService()
         self.assertEqual(
-            self.master.namedServices["basic"].config, ((1,), dict(a=2)))
+            self.master.namedServices["basic"].config, ((1,), {"a": 2}))
 
     @defer.inlineCallbacks
     def testConfigDict(self):
@@ -622,7 +623,7 @@ class BuildbotServiceManager(unittest.TestCase):
     def testNominal(self):
         yield self.prepareService()
         self.assertEqual(
-            self.manager.namedServices["basic"].config, ((1,), dict(a=2)))
+            self.manager.namedServices["basic"].config, ((1,), {"a": 2}))
 
     @defer.inlineCallbacks
     def testReconfigNoChange(self):
@@ -659,7 +660,7 @@ class BuildbotServiceManager(unittest.TestCase):
         self.assertNotIdentical(self.manager.namedServices["basic"], serv2)
 
         # reconfigServiceWithConstructorArgs was called with new config
-        self.assertEqual(serv.config, ((1,), dict(a=4)))
+        self.assertEqual(serv.config, ((1,), {"a": 4}))
 
     def testNoName(self):
         with self.assertRaises(ValueError):
@@ -689,7 +690,7 @@ class BuildbotServiceManager(unittest.TestCase):
         self.assertIdentical(self.manager.namedServices["basic2"], serv2)
 
         # reconfigServiceWithConstructorArgs was called with new config
-        self.assertEqual(serv2.config, ((1,), dict(a=4)))
+        self.assertEqual(serv2.config, ((1,), {"a": 4}))
 
     @defer.inlineCallbacks
     def testReconfigWithDeleted(self):
@@ -739,6 +740,17 @@ class BuildbotServiceManager(unittest.TestCase):
         service = self.manager.namedServices['basic']
         test = yield service.renderSecrets(('user', Interpolate('test_string')))
         self.assertEqual(test, ('user', 'test_string'))
+
+    @async_to_deferred
+    async def test_service_name_collision(self):
+        with self.assertRaises(config.ConfigErrors):
+            self.master.config = fakeConfig()
+            service = MyService(1, name="service")
+            self.master.config.services = [service, service]
+            self.manager = service.BuildbotServiceManager()
+            await self.manager.setServiceParent(self.master)
+            await self.master.startService()
+            await self.master.reconfigServiceWithBuildbotConfig(self.master.config)
 
 
 class UnderTestSharedService(service.SharedService):

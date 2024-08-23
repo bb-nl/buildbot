@@ -24,11 +24,9 @@ from setuptools import setup  # isort:skip
 import glob
 import inspect
 import os
-import pkg_resources
 import sys
 from distutils.command.install_data import install_data
 from distutils.command.sdist import sdist
-from pkg_resources import parse_version
 
 from buildbot import version
 
@@ -152,9 +150,11 @@ setup_args = {
         'Topic :: Software Development :: Build Tools',
         'Topic :: Software Development :: Testing',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
+        'Programming Language :: Python :: 3.10',
+        'Programming Language :: Python :: 3.11',
+        'Programming Language :: Python :: 3.12',
     ],
 
     'packages': [
@@ -334,7 +334,12 @@ setup_args = {
             ('buildbot.reporters.generators.buildrequest', [
                 'BuildRequestGenerator'
             ]),
-            ('buildbot.reporters.generators.buildset', ['BuildSetStatusGenerator']),
+            ("buildbot.reporters.generators.buildset",
+                [
+                    "BuildSetCombinedStatusGenerator",
+                    "BuildSetStatusGenerator",
+                ]
+             ),
             ('buildbot.reporters.generators.worker', ['WorkerMissingGenerator']),
             ('buildbot.reporters.mail', ['MailNotifier']),
             ('buildbot.reporters.pushjet', ['PushjetNotifier']),
@@ -343,6 +348,7 @@ setup_args = {
                 'MessageFormatter',
                 'MessageFormatterEmpty',
                 'MessageFormatterFunction',
+                "MessageFormatterFunctionRaw",
                 'MessageFormatterMissingWorker',
                 'MessageFormatterRenderable',
             ]),
@@ -387,6 +393,7 @@ setup_args = {
                 'BuildFactory', 'GNUAutoconf', 'CPAN', 'Distutils', 'Trial',
                 'BasicBuildFactory', 'QuickBuildFactory', 'BasicSVN']),
             ('buildbot.process.logobserver', ['LogLineObserver']),
+            ('buildbot.process.project', ['Project']),
             ('buildbot.process.properties', [
                 'FlattenList', 'Interpolate', 'Property', 'Transform',
                 'WithProperties', 'renderer', 'Secret']),
@@ -462,32 +469,12 @@ setup_args = {
 if sys.platform == "win32":
     setup_args['zip_safe'] = False
 
-py_36 = sys.version_info[0] > 3 or (
-    sys.version_info[0] == 3 and sys.version_info[1] >= 7)
-if not py_36:
-    raise RuntimeError("Buildbot master requires at least Python-3.7")
+py_38 = sys.version_info[0] > 3 or (
+    sys.version_info[0] == 3 and sys.version_info[1] >= 8)
+if not py_38:
+    raise RuntimeError("Buildbot master requires at least Python-3.8")
 
-# pip<1.4 doesn't have the --pre flag, and will thus attempt to install alpha
-# and beta versions of Buildbot.  Prevent that from happening.
-VERSION_MSG = """
-This is a pre-release version of Buildbot, which can only be installed with
-pip-1.4 or later Try installing the latest stable version of Buildbot instead:
-    pip install buildbot==0.8.12
-See https://pypi.python.org/pypi/buildbot to verify the current stable version.
-"""
-if 'a' in version or 'b' in version:
-    try:
-        pip_dist = pkg_resources.get_distribution('pip')
-    except pkg_resources.DistributionNotFound:
-        pip_dist = None
-
-    if pip_dist:
-        if parse_version(pip_dist.version) < parse_version('1.4'):
-            raise RuntimeError(VERSION_MSG)
-
-twisted_ver = ">= 18.7.0"
-autobahn_ver = ">= 0.16.0"
-txaio_ver = ">= 2.2.2"
+twisted_ver = ">= 18.7.0, <=23.10.0"
 
 bundle_version = version.split("-")[0]
 
@@ -497,15 +484,19 @@ setup_args['install_requires'] = [
     'Twisted ' + twisted_ver,
     'Jinja2 >= 2.1',
     'msgpack >= 0.6.0',
+    "croniter >= 1.3.0",
+    'importlib-resources >= 5',
     # required for tests, but Twisted requires this anyway
     'zope.interface >= 4.1.1',
     'sqlalchemy >= 1.3.0, < 1.5',
     'alembic >= 1.6.0',
     'python-dateutil>=1.5',
-    'txaio ' + txaio_ver,
-    'autobahn ' + autobahn_ver,
+    "txaio >= 2.2.2",
+    "autobahn >= 0.16.0",
+    'packaging',
     'PyJWT',
-    'pyyaml'
+    'pyyaml',
+    'unidiff >= 0.7.5',
 ]
 
 # buildbot_windows_service needs pywin32
@@ -522,7 +513,7 @@ test_deps = [
     # boto3 and moto required for running EC2 tests
     'boto3',
     'moto',
-    'mock>=2.0.0',
+    "Markdown>=3.0.0",
     'parameterized',
 ]
 if sys.platform != 'win32':

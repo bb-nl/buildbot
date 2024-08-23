@@ -17,14 +17,19 @@
 
 import {observer} from "mobx-react";
 import {Card} from "react-bootstrap";
-import {globalMenuSettings} from "../../plugins/GlobalMenuSettings";
-import {globalRoutes} from "../../plugins/GlobalRoutes";
+import {FaSlidersH} from "react-icons/fa";
+import {buildbotSetupPlugin} from "buildbot-plugin-support";
 import {
   GlobalSettings,
   globalSettings,
   SettingGroup,
   SettingItem, SettingValue
 } from "../../plugins/GlobalSettings";
+import {FieldBoolean} from "./Fields/FieldBoolean";
+import {FieldChoiceCombo} from "./Fields/FieldChoiceCombo";
+import {FieldFloat} from "./Fields/FieldFloat";
+import {FieldInteger} from "./Fields/FieldInteger";
+import {FieldString} from "./Fields/FieldString";
 
 const computeMasterCfgSnippet = (settings: GlobalSettings) => {
   let code = "c['www']['ui_default_config'] = { \n";
@@ -47,7 +52,7 @@ const computeMasterCfgSnippet = (settings: GlobalSettings) => {
   return code;
 };
 
-const SettingsView = observer(() => {
+export const SettingsView = observer(() => {
   const masterCfgOverrideSnippet = computeMasterCfgSnippet(globalSettings);
 
   const renderGroupItem = (groupName: string, item: SettingItem) => {
@@ -58,36 +63,25 @@ const SettingsView = observer(() => {
     };
 
     if (item.type === 'boolean') {
-      return (
-        <div className="form-group">
-          <label className="checkbox-inline">
-            <input type="checkbox" name={item.name} checked={item.value as boolean}
-                   onChange={event => setSetting(event.target.checked)}
-            />{item.caption}
-          </label>
-        </div>
-      );
+      return <FieldBoolean item={item} setSetting={setSetting}/>;
     }
 
-    if (item.type === 'integer' || item.type === 'float') {
-      return (
-        <div className="form-group">
-          <label>{item.caption}</label>
-          <input type="number" name={item.name} className="form-control" value={item.value as number}
-                 onChange={event => setSetting(event.target.value)}/>
-        </div>
-      );
+    if (item.type === 'integer') {
+      return <FieldInteger item={item} setSetting={setSetting}/>
+    }
+
+    if (item.type === 'float') {
+      return <FieldFloat item={item} setSetting={setSetting}/>
     }
 
     if (item.type === 'string') {
-      return (
-        <div className="form-group">
-          <label>{item.caption}</label>
-          <input type="text" name={item.name} className="form-control" value={item.value as string}
-                 onChange={event => setSetting(event.target.value)}/>
-        </div>
-      );
+      return <FieldString item={item} setSetting={setSetting}/>;
     }
+
+    if (item.type === 'choice_combo') {
+      return <FieldChoiceCombo item={item} setSetting={setSetting}/>;
+    }
+
     return (
       <div className="alert alert-danger">
         bad item type: {item.type} should be one of: bool, choices, integer, text
@@ -97,12 +91,13 @@ const SettingsView = observer(() => {
 
   const renderGroup = (group: SettingGroup) => {
     return (
-      <Card>
+      <Card key={group.name}>
         <Card.Header>
           <Card.Title>{group.caption}</Card.Title>
         </Card.Header>
         <Card.Body>
-          <form name={group.name}>
+          <form data-bb-test-id={`settings-group-${group.name}`}
+                name={group.name}>
             {Object.values(group.items).map(item => (
               <div key={item.name}>
                 <div className="col-md-12">
@@ -132,19 +127,19 @@ const SettingsView = observer(() => {
   );
 });
 
-globalMenuSettings.addGroup({
-  name: 'settings',
-  caption: 'Settings',
-  icon: 'sliders',
-  order: 99,
-  route: '/settings',
-  parentName: null,
-});
+buildbotSetupPlugin((reg) => {
+  reg.registerMenuGroup({
+    name: 'settings',
+    caption: 'Settings',
+    icon: <FaSlidersH/>,
+    order: 99,
+    route: '/settings',
+    parentName: null,
+  });
 
-globalRoutes.addRoute({
-  route: "/settings",
-  group: null,
-  element: () => <SettingsView/>,
+  reg.registerRoute({
+    route: "/settings",
+    group: null,
+    element: () => <SettingsView/>,
+  });
 });
-
-export default SettingsView;

@@ -76,7 +76,7 @@ class KubeHardcodedConfig(KubeConfigLoaderBase):
         if headers is not None:
             self.config['headers'] = headers
         if basicAuth and bearerToken:
-            raise Exception("set one of basicAuth and bearerToken, not both")
+            raise RuntimeError("set one of basicAuth and bearerToken, not both")
         self.basicAuth = basicAuth
         self.bearerToken = bearerToken
         if cert is not None:
@@ -155,7 +155,8 @@ class KubeCtlProxyConfigLoader(KubeConfigLoaderBase):
             self.pp,
             self.kube_ctl_proxy_cmd[0],
             self.kube_ctl_proxy_cmd + ["-p", str(self.proxy_port)],
-            env=None)
+            env=os.environ
+        )
         self.kube_proxy_output = yield self.pp.got_output_deferred
 
     def stopService(self):
